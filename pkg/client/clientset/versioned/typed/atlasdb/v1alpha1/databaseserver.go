@@ -19,7 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	scheme "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -53,7 +53,7 @@ type databaseServers struct {
 }
 
 // newDatabaseServers returns a DatabaseServers
-func newDatabaseServers(c *AtlasV1alpha1Client, namespace string) *databaseServers {
+func newDatabaseServers(c *AtlasdbV1alpha1Client, namespace string) *databaseServers {
 	return &databaseServers{
 		client: c.RESTClient(),
 		ns:     namespace,

@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -30,13 +30,13 @@ import (
 
 // FakeDatabaseServers implements DatabaseServerInterface
 type FakeDatabaseServers struct {
-	Fake *FakeAtlasV1alpha1
+	Fake *FakeAtlasdbV1alpha1
 	ns   string
 }
 
-var databaseserversResource = schema.GroupVersionResource{Group: "atlas.infoblox.com", Version: "v1alpha1", Resource: "databaseservers"}
+var databaseserversResource = schema.GroupVersionResource{Group: "atlasdb.infoblox.com", Version: "v1alpha1", Resource: "databaseservers"}
 
-var databaseserversKind = schema.GroupVersionKind{Group: "atlas.infoblox.com", Version: "v1alpha1", Kind: "DatabaseServer"}
+var databaseserversKind = schema.GroupVersionKind{Group: "atlasdb.infoblox.com", Version: "v1alpha1", Kind: "DatabaseServer"}
 
 // Get takes name of the databaseServer, and returns the corresponding databaseServer object, and an error if there is any.
 func (c *FakeDatabaseServers) Get(name string, options v1.GetOptions) (result *v1alpha1.DatabaseServer, err error) {

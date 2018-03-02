@@ -24,7 +24,8 @@ import (
 	time "time"
 
 	versioned "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
-	atlas "github.com/infobloxopen/atlas/pkg/client/informers/externalversions/atlas"
+	atlasauthz "github.com/infobloxopen/atlas/pkg/client/informers/externalversions/atlasauthz"
+	atlasdb "github.com/infobloxopen/atlas/pkg/client/informers/externalversions/atlasdb"
 	internalinterfaces "github.com/infobloxopen/atlas/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -123,9 +124,14 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Atlas() atlas.Interface
+	Atlasauthz() atlasauthz.Interface
+	Atlasdb() atlasdb.Interface
 }
 
-func (f *sharedInformerFactory) Atlas() atlas.Interface {
-	return atlas.New(f, f.namespace, f.tweakListOptions)
+func (f *sharedInformerFactory) Atlasauthz() atlasauthz.Interface {
+	return atlasauthz.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Atlasdb() atlasdb.Interface {
+	return atlasdb.New(f, f.namespace, f.tweakListOptions)
 }

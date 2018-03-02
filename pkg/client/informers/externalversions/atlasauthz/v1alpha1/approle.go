@@ -21,69 +21,69 @@ package v1alpha1
 import (
 	time "time"
 
-	atlas_v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	atlasauthz_v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasauthz/v1alpha1"
 	versioned "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/infobloxopen/atlas/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/infobloxopen/atlas/pkg/client/listers/atlas/v1alpha1"
+	v1alpha1 "github.com/infobloxopen/atlas/pkg/client/listers/atlasauthz/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// DatabaseServerInformer provides access to a shared informer and lister for
-// DatabaseServers.
-type DatabaseServerInformer interface {
+// AppRoleInformer provides access to a shared informer and lister for
+// AppRoles.
+type AppRoleInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.DatabaseServerLister
+	Lister() v1alpha1.AppRoleLister
 }
 
-type databaseServerInformer struct {
+type appRoleInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewDatabaseServerInformer constructs a new informer for DatabaseServer type.
+// NewAppRoleInformer constructs a new informer for AppRole type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewDatabaseServerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredDatabaseServerInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewAppRoleInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredAppRoleInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredDatabaseServerInformer constructs a new informer for DatabaseServer type.
+// NewFilteredAppRoleInformer constructs a new informer for AppRole type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredDatabaseServerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredAppRoleInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.AtlasV1alpha1().DatabaseServers(namespace).List(options)
+				return client.AtlasauthzV1alpha1().AppRoles(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.AtlasV1alpha1().DatabaseServers(namespace).Watch(options)
+				return client.AtlasauthzV1alpha1().AppRoles(namespace).Watch(options)
 			},
 		},
-		&atlas_v1alpha1.DatabaseServer{},
+		&atlasauthz_v1alpha1.AppRole{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *databaseServerInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredDatabaseServerInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *appRoleInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredAppRoleInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *databaseServerInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&atlas_v1alpha1.DatabaseServer{}, f.defaultInformer)
+func (f *appRoleInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&atlasauthz_v1alpha1.AppRole{}, f.defaultInformer)
 }
 
-func (f *databaseServerInformer) Lister() v1alpha1.DatabaseServerLister {
-	return v1alpha1.NewDatabaseServerLister(f.Informer().GetIndexer())
+func (f *appRoleInformer) Lister() v1alpha1.AppRoleLister {
+	return v1alpha1.NewAppRoleLister(f.Informer().GetIndexer())
 }

@@ -10,16 +10,19 @@ type activeInstance interface {
 }
 
 func (i *DatabaseServerInstance) instance() activeInstance {
-	members := []activeInstance{
-		i.RDS,
-		i.MySQL,
-		i.Postgres,
+	//TODO: there must be a better way??
+
+	if i.RDS != nil {
+		return i.RDS
 	}
 
-	for _, m := range members {
-		if m != nil {
-			return m
-		}
+	if i.MySQL != nil {
+		return i.MySQL
 	}
+
+	if i.Postgres != nil {
+		return i.Postgres
+	}
+
 	return nil
 }

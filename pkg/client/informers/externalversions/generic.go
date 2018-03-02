@@ -21,7 +21,8 @@ package externalversions
 import (
 	"fmt"
 
-	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasauthz/v1alpha1"
+	atlasdb_v1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -52,9 +53,13 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=atlas.infoblox.com, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("databaseservers"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Atlas().V1alpha1().DatabaseServers().Informer()}, nil
+	// Group=atlasauthz.infoblox.com, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("approles"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Atlasauthz().V1alpha1().AppRoles().Informer()}, nil
+
+		// Group=atlasdb.infoblox.com, Version=v1alpha1
+	case atlasdb_v1alpha1.SchemeGroupVersion.WithResource("databaseservers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Atlasdb().V1alpha1().DatabaseServers().Informer()}, nil
 
 	}
 

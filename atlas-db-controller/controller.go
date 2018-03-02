@@ -21,11 +21,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	atlasv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	atlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	clientset "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
 	atlasscheme "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/scheme"
 	informers "github.com/infobloxopen/atlas/pkg/client/informers/externalversions"
-	listers "github.com/infobloxopen/atlas/pkg/client/listers/atlas/v1alpha1"
+	listers "github.com/infobloxopen/atlas/pkg/client/listers/atlasdb/v1alpha1"
 )
 
 const controllerAgentName = "atlas-db-controller"
@@ -79,7 +79,7 @@ func NewController(
 	//secretsInformer := kubeInformerFactory.Apps().V1().Secrets()
 	//pvcInformer := kubeInformerFactory.Apps().V1().PersistentVolumeClaims()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
-	serverInformer := atlasInformerFactory.Atlas().V1alpha1().DatabaseServers()
+	serverInformer := atlasInformerFactory.Atlasdb().V1alpha1().DatabaseServers()
 
 	// Create event broadcaster
 	// Add atlas-db-controller types to the default Kubernetes Scheme so Events can be
@@ -265,6 +265,8 @@ func (c *Controller) syncHandler(key string) error {
 		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Create(server.NewPod())
 	}
 
+	glog.V(4).Infof("DatabaseServer %s err %v pod : %v", podName, err, pod)
+	
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
@@ -308,7 +310,7 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updateDatabaseServerStatus(server *atlasv1alpha1.DatabaseServer, pod *corev1.Pod) error {
+func (c *Controller) updateDatabaseServerStatus(server *atlasdbv1alpha1.DatabaseServer, pod *corev1.Pod) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
@@ -318,7 +320,7 @@ func (c *Controller) updateDatabaseServerStatus(server *atlasv1alpha1.DatabaseSe
 	// update the Status block of the DatabaseServer resource. UpdateStatus will not
 	// allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-	_, err := c.atlasclientset.AtlasV1alpha1().DatabaseServers(server.Namespace).Update(serverCopy)
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(server.Namespace).Update(serverCopy)
 	return err
 }
 

@@ -1,8 +1,8 @@
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +genclient
@@ -21,13 +21,13 @@ type DatabaseServer struct {
 // DatabaseServerSpec is the spec for a DatabaseServer resource
 type DatabaseServerSpec struct {
 	DatabaseServerInstance
-	Volumes            []corev1.Volume
-	RootUserName	   string
-	RootUserNameFrom   *corev1.EnvVarSource
-	RootPassword	   string
-	RootPasswordFrom   *corev1.EnvVarSource
-	ServicePort        int32
-	Port               int32
+	Volumes          []corev1.Volume
+	RootUserName     string
+	RootUserNameFrom *corev1.EnvVarSource
+	RootPassword     string
+	RootPasswordFrom *corev1.EnvVarSource
+	ServicePort      int32
+	Port             int32
 }
 
 // DatabaseServerInstance represents the type and method used
@@ -37,6 +37,13 @@ type DatabaseServerInstance struct {
 	RDS      *RDSInstance
 	MySQL    *MySQLInstance
 	Postgres *PostgresInstance
+}
+
+type LocalDatabaseServer interface {
+	PodName() string
+	Image() string
+	EnvVar() []corev1.EnvVar
+	ContainerPort() int32
 }
 
 // RDSInstance contains the details needed to provision an RDS instance.

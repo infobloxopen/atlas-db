@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
@@ -263,7 +262,7 @@ func (c *Controller) syncHandler(key string) error {
 	pod, err := c.podsLister.Pods(server.Namespace).Get(podName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
-		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Create(newPod(server))
+		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Create(server.NewPod())
 	}
 
 	// If an error occurs during Get/Create, we'll requeue the item so we can
@@ -287,7 +286,7 @@ func (c *Controller) syncHandler(key string) error {
 	// should update the Pod resource.
 	if server.Spec.Replicas != nil && *server.Spec.Replicas != *pod.Spec.Replicas {
 		glog.V(4).Infof("DatabaseServer %s replicas: %d, pod replicas: %d", name, *server.Spec.Replicas, *pod.Spec.Replicas)
-		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Update(newPod(server))
+		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Update(server.NewPod(server))
 	}
 
 	// If an error occurs during Update, we'll requeue the item so we can
@@ -373,44 +372,5 @@ func (c *Controller) handleObject(obj interface{}) {
 
 		c.enqueueDatabaseServer(server)
 		return
-	}
-}
-
-// newPod creates a new Pod for a DatabaseServer resource. It also sets
-// the appropriate OwnerReferences on the resource so handleObject can discover
-// the DatabaseServer resource that 'owns' it.
-func newPod(server *atlasv1alpha1.DatabaseServer) *corev1.Pod {
-	labels := map[string]string{
-		"controller": server.Name,
-	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      server.Name,
-			Namespace: server.Namespace,
-			Labels:    labels,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(server, schema.GroupVersionKind{
-					Group:   atlasv1alpha1.SchemeGroupVersion.Group,
-					Version: atlasv1alpha1.SchemeGroupVersion.Version,
-					Kind:    "DatabaseServer",
-				}),
-			},
-		},
-		Spec: corev1.PodSpec{
-			Volumes: server.Spec.Volumes,
-			Containers: []corev1.Container{
-				{
-					Name:  "server",
-					Image: server.Spec.MySQL.Image,
-					Env: []corev1.EnvVar{
-						{
-						Name: "MYSQL_ROOT_PASSWORD",
-						Value: server.Spec.RootPassword,
-						ValueFrom: server.Spec.RootPasswordFrom,
-						},
-					},
-				},
-			},
-		},
 	}
 }

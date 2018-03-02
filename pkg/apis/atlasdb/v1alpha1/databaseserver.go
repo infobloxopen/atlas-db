@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	"log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -11,7 +10,6 @@ import (
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the DatabaseServer resource that 'owns' it.
 func (server *DatabaseServer) NewPod() *corev1.Pod {
-	log.Println("server = %v", server)
 	if !server.Spec.instance().needsPod() {
 		return nil
 	}
@@ -34,6 +32,5 @@ func (server *DatabaseServer) NewPod() *corev1.Pod {
 		},
 		Spec: server.Spec.instance().podSpec(&server.Spec),
 	}
-	log.Println("hi! %v", p)
 	return p
 }

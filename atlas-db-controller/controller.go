@@ -1,5 +1,7 @@
 package main
 
+// based on https://github.com/kubernetes/sample-controller
+
 import (
 	"fmt"
 	"time"
@@ -264,8 +266,6 @@ func (c *Controller) syncHandler(key string) error {
 	if errors.IsNotFound(err) {
 		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Create(server.NewPod())
 	}
-
-	glog.V(4).Infof("DatabaseServer %s err %v pod : %v", podName, err, pod)
 	
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a

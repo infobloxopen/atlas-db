@@ -1,6 +1,8 @@
-package v1alpha1
+package server
 
 import (
+	"log"
+        atlas "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -9,28 +11,31 @@ import (
 // NewPod creates a new Pod for a DatabaseServer resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the DatabaseServer resource that 'owns' it.
-func (server *DatabaseServer) NewPod() *corev1.Pod {
-	if !server.Spec.instance().needsPod() {
+func NewPod(s *atlas.DatabaseServer) *corev1.Pod {
+
+	plugin, ok := activePlugin(s).(PodPlugin)
+	if !ok {
+		log.Println("activePlugin: ", activePlugin(s))
 		return nil
 	}
 
 	labels := map[string]string{
-		"controller": server.Name,
+		"controller": s.Name,
 	}
 	p := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      server.Name,
-			Namespace: server.Namespace,
+			Name:      s.Name,
+			Namespace: s.Namespace,
 			Labels:    labels,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(server, schema.GroupVersionKind{
-					Group:   SchemeGroupVersion.Group,
-					Version: SchemeGroupVersion.Version,
+				*metav1.NewControllerRef(s, schema.GroupVersionKind{
+					Group:   atlas.SchemeGroupVersion.Group,
+					Version: atlas.SchemeGroupVersion.Version,
 					Kind:    "DatabaseServer",
 				}),
 			},
 		},
-		Spec: server.Spec.instance().podSpec(&server.Spec),
+		Spec: plugin.podSpec(&s.Spec),
 	}
 	return p
 }

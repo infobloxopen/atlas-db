@@ -20,7 +20,7 @@ type DatabaseServer struct {
 
 // DatabaseServerSpec is the spec for a DatabaseServer resource
 type DatabaseServerSpec struct {
-	DatabaseServerInstance
+	DatabaseServerPlugin
 	Volumes          []corev1.Volume
 	RootUserName     string
 	RootUserNameFrom *corev1.EnvVarSource
@@ -30,24 +30,17 @@ type DatabaseServerSpec struct {
 	Port             int32
 }
 
-// DatabaseServerInstance represents the type and method used
+// DatabaseServerPlugin represents the type and method used
 // to provision a database server. Only one of its members
 // may be set.
-type DatabaseServerInstance struct {
-	RDS      *RDSInstance
-	MySQL    *MySQLInstance
-	Postgres *PostgresInstance
+type DatabaseServerPlugin struct {
+	RDS      *RDSPlugin
+	MySQL    *MySQLPlugin
+	Postgres *PostgresPlugin
 }
 
-type LocalDatabaseServer interface {
-	PodName() string
-	Image() string
-	EnvVar() []corev1.EnvVar
-	ContainerPort() int32
-}
-
-// RDSInstance contains the details needed to provision an RDS instance.
-type RDSInstance struct {
+// RDSPlugin contains the details needed to provision an RDS instance.
+type RDSPlugin struct {
 	AllocatedStorage     int32
 	Iops                 int32
 	DBInstanceClass      string
@@ -56,13 +49,14 @@ type RDSInstance struct {
 	Engine               string
 }
 
-// MySQLInstance contains the details needed to provision a MySQL instance.
-type MySQLInstance struct {
+// MySQLPlugin contains the details needed to provision a MySQL instance.
+type MySQLPlugin struct {
 	Image string
+	Version string
 }
 
-// PostgresInstance contains the details needed to provision a Postgres instance.
-type PostgresInstance MySQLInstance
+// PostgresPlugin contains the details needed to provision a Postgres instance.
+type PostgresPlugin MySQLPlugin
 
 // DatabaseServerStatus is the status for a DatabaseServer resource
 type DatabaseServerStatus struct {

@@ -1,15 +1,23 @@
-package v1alpha1
+package server
 
 import (
+        atlas "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func (i *MySQLInstance) needsPod() bool {
-	return true
+type MySQLPlugin atlas.MySQLPlugin
+
+func (p *MySQLPlugin) Name() string {
+	return "MySQL"
 }
 
-func (i *MySQLInstance) podSpec(spec *DatabaseServerSpec) corev1.PodSpec {
-	img := i.Image
+func convertMySQL(a *atlas.MySQLPlugin) *MySQLPlugin {
+	p := MySQLPlugin(*a)
+	return &p
+}
+
+func (p *MySQLPlugin) podSpec(spec *atlas.DatabaseServerSpec) corev1.PodSpec {
+	img := p.Image
 	if img == "" {
 		img = "mysql:5.6"
 	}

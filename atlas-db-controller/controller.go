@@ -28,9 +28,11 @@ import (
 	atlasscheme "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/scheme"
 	informers "github.com/infobloxopen/atlas/pkg/client/informers/externalversions"
 	listers "github.com/infobloxopen/atlas/pkg/client/listers/atlasdb/v1alpha1"
+
+	"github.com/infobloxopen/atlas/pkg/db/server"
 )
 
-const controllerAgentName = "atlas-db-controller"
+const controllerAgentName = "atlas-dbserver-controller"
 
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a DatabaseServer is synced
@@ -239,7 +241,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// Get the DatabaseServer resource with this namespace/name
-	server, err := c.serversLister.DatabaseServers(namespace).Get(name)
+	s, err := c.serversLister.DatabaseServers(namespace).Get(name)
 	if err != nil {
 		// The DatabaseServer resource may no longer exist, in which case we stop
 		// processing.
@@ -251,7 +253,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	podName := server.Name
+	podName := s.Name
 	if podName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -261,10 +263,10 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// Get the pod with the name specified in Foo.spec
-	pod, err := c.podsLister.Pods(server.Namespace).Get(podName)
+	pod, err := c.podsLister.Pods(s.Namespace).Get(podName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
-		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Create(server.NewPod())
+		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Create(server.NewPod(s))
 	}
 	
 	// If an error occurs during Get/Create, we'll requeue the item so we can
@@ -276,9 +278,9 @@ func (c *Controller) syncHandler(key string) error {
 
 	// If the Pod is not controlled by this DatabaseServer resource, we should log
 	// a warning to the event recorder and ret
-	if !metav1.IsControlledBy(pod, server) {
+	if !metav1.IsControlledBy(pod, s) {
 		msg := fmt.Sprintf(MessageResourceExists, pod.Name)
-		c.recorder.Event(server, corev1.EventTypeWarning, ErrResourceExists, msg)
+		c.recorder.Event(s, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
 
@@ -286,9 +288,9 @@ func (c *Controller) syncHandler(key string) error {
 	// If this number of the replicas on the DatabaseServer resource is specified, and the
 	// number does not equal the current desired replicas on the Pod, we
 	// should update the Pod resource.
-	if server.Spec.Replicas != nil && *server.Spec.Replicas != *pod.Spec.Replicas {
-		glog.V(4).Infof("DatabaseServer %s replicas: %d, pod replicas: %d", name, *server.Spec.Replicas, *pod.Spec.Replicas)
-		pod, err = c.kubeclientset.CoreV1().Pods(server.Namespace).Update(server.NewPod(server))
+	if s.Spec.Replicas != nil && *s.Spec.Replicas != *pod.Spec.Replicas {
+		glog.V(4).Infof("DatabaseServer %s replicas: %d, pod replicas: %d", name, *s.Spec.Replicas, *pod.Spec.Replicas)
+		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(server.NewPod(s))
 	}
 
 	// If an error occurs during Update, we'll requeue the item so we can
@@ -301,26 +303,26 @@ func (c *Controller) syncHandler(key string) error {
 
 	// Finally, we update the status block of the DatabaseServer resource to reflect the
 	// current state of the world
-	err = c.updateDatabaseServerStatus(server, pod)
+	err = c.updateDatabaseServerStatus(s, pod)
 	if err != nil {
 		return err
 	}
 
-	c.recorder.Event(server, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	c.recorder.Event(s, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-func (c *Controller) updateDatabaseServerStatus(server *atlasdbv1alpha1.DatabaseServer, pod *corev1.Pod) error {
+func (c *Controller) updateDatabaseServerStatus(s *atlasdbv1alpha1.DatabaseServer, pod *corev1.Pod) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-	serverCopy := server.DeepCopy()
+	serverCopy := s.DeepCopy()
 	//serverCopy.Status.AvailableReplicas = pod.Status.AvailableReplicas
 	// Until #38113 is merged, we must use Update instead of UpdateStatus to
 	// update the Status block of the DatabaseServer resource. UpdateStatus will not
 	// allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(server.Namespace).Update(serverCopy)
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).Update(serverCopy)
 	return err
 }
 
@@ -366,13 +368,13 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		server, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)
+		s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
 			glog.V(4).Infof("ignoring orphaned object '%s' of databaseserver '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
 
-		c.enqueueDatabaseServer(server)
+		c.enqueueDatabaseServer(s)
 		return
 	}
 }

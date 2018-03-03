@@ -1,0 +1,10 @@
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 3306
+  port: 3306
+  rootPassword: "root"
+  mySQL:
+    image: mysql

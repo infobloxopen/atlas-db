@@ -23,5 +23,5 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-ge
 
 ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
   github.com/infobloxopen/atlas/pkg/client github.com/infobloxopen/atlas/pkg/apis \
-  atlas:v1alpha1 \
+  "atlasdb:v1alpha1 atlasauthz:v1alpha1" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt

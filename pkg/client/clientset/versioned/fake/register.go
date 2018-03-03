@@ -19,7 +19,8 @@ limitations under the License.
 package fake
 
 import (
-	atlasv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlas/v1alpha1"
+	atlasauthzv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasauthz/v1alpha1"
+	atlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -50,5 +51,6 @@ func init() {
 // After this, RawExtensions in Kubernetes types will serialize kube-aggregator types
 // correctly.
 func AddToScheme(scheme *runtime.Scheme) {
-	atlasv1alpha1.AddToScheme(scheme)
+	atlasauthzv1alpha1.AddToScheme(scheme)
+	atlasdbv1alpha1.AddToScheme(scheme)
 }

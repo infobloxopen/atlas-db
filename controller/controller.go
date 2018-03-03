@@ -23,16 +23,16 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	atlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/apis/atlasdb/v1alpha1"
-	clientset "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
-	atlasscheme "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/scheme"
-	informers "github.com/infobloxopen/atlas/pkg/client/informers/externalversions"
-	listers "github.com/infobloxopen/atlas/pkg/client/listers/atlasdb/v1alpha1"
+	atlasdbv1alpha1 "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
+	atlasscheme "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/scheme"
+	informers "github.com/infobloxopen/atlas-db/pkg/client/informers/externalversions"
+	listers "github.com/infobloxopen/atlas-db/pkg/client/listers/db/v1alpha1"
 
-	"github.com/infobloxopen/atlas/pkg/db/server"
+	"github.com/infobloxopen/atlas-db/pkg/server"
 )
 
-const controllerAgentName = "atlas-dbserver-controller"
+const controllerAgentName = "atlas-db-controller"
 
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a DatabaseServer is synced

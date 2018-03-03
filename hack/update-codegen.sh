@@ -22,6 +22,6 @@ SCRIPT_ROOT=$(dirname ${BASH_SOURCE})/..
 CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator)}
 
 ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
-  github.com/infobloxopen/atlas/pkg/client github.com/infobloxopen/atlas/pkg/apis \
-  "atlasdb:v1alpha1 atlasauthz:v1alpha1" \
+  github.com/infobloxopen/atlas-db/pkg/client github.com/infobloxopen/atlas-db/pkg/apis \
+  "db:v1alpha1" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate.go.txt

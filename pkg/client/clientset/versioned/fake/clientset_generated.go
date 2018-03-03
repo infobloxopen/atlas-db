@@ -19,11 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
-	atlasauthzv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasauthz/v1alpha1"
-	fakeatlasauthzv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasauthz/v1alpha1/fake"
-	atlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasdb/v1alpha1"
-	fakeatlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasdb/v1alpha1/fake"
+	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
+	atlasdbv1alpha1 "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/typed/db/v1alpha1"
+	fakeatlasdbv1alpha1 "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/typed/db/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -71,16 +69,6 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 }
 
 var _ clientset.Interface = &Clientset{}
-
-// AtlasauthzV1alpha1 retrieves the AtlasauthzV1alpha1Client
-func (c *Clientset) AtlasauthzV1alpha1() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface {
-	return &fakeatlasauthzv1alpha1.FakeAtlasauthzV1alpha1{Fake: &c.Fake}
-}
-
-// Atlasauthz retrieves the AtlasauthzV1alpha1Client
-func (c *Clientset) Atlasauthz() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface {
-	return &fakeatlasauthzv1alpha1.FakeAtlasauthzV1alpha1{Fake: &c.Fake}
-}
 
 // AtlasdbV1alpha1 retrieves the AtlasdbV1alpha1Client
 func (c *Clientset) AtlasdbV1alpha1() atlasdbv1alpha1.AtlasdbV1alpha1Interface {

@@ -20,8 +20,7 @@ package versioned
 
 import (
 	glog "github.com/golang/glog"
-	atlasauthzv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasauthz/v1alpha1"
-	atlasdbv1alpha1 "github.com/infobloxopen/atlas/pkg/client/clientset/versioned/typed/atlasdb/v1alpha1"
+	atlasdbv1alpha1 "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/typed/db/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -29,9 +28,6 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	AtlasauthzV1alpha1() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface
-	// Deprecated: please explicitly pick a version if possible.
-	Atlasauthz() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface
 	AtlasdbV1alpha1() atlasdbv1alpha1.AtlasdbV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Atlasdb() atlasdbv1alpha1.AtlasdbV1alpha1Interface
@@ -41,19 +37,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	atlasauthzV1alpha1 *atlasauthzv1alpha1.AtlasauthzV1alpha1Client
-	atlasdbV1alpha1    *atlasdbv1alpha1.AtlasdbV1alpha1Client
-}
-
-// AtlasauthzV1alpha1 retrieves the AtlasauthzV1alpha1Client
-func (c *Clientset) AtlasauthzV1alpha1() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface {
-	return c.atlasauthzV1alpha1
-}
-
-// Deprecated: Atlasauthz retrieves the default version of AtlasauthzClient.
-// Please explicitly pick a version.
-func (c *Clientset) Atlasauthz() atlasauthzv1alpha1.AtlasauthzV1alpha1Interface {
-	return c.atlasauthzV1alpha1
+	atlasdbV1alpha1 *atlasdbv1alpha1.AtlasdbV1alpha1Client
 }
 
 // AtlasdbV1alpha1 retrieves the AtlasdbV1alpha1Client
@@ -83,10 +67,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.atlasauthzV1alpha1, err = atlasauthzv1alpha1.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
 	cs.atlasdbV1alpha1, err = atlasdbv1alpha1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -104,7 +84,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.atlasauthzV1alpha1 = atlasauthzv1alpha1.NewForConfigOrDie(c)
 	cs.atlasdbV1alpha1 = atlasdbv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -114,7 +93,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.atlasauthzV1alpha1 = atlasauthzv1alpha1.New(c)
 	cs.atlasdbV1alpha1 = atlasdbv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

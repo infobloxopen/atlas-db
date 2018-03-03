@@ -11,9 +11,9 @@ import (
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
-	clientset "github.com/infobloxopen/atlas/pkg/client/clientset/versioned"
-	informers "github.com/infobloxopen/atlas/pkg/client/informers/externalversions"
-	"github.com/infobloxopen/atlas/pkg/signals"
+	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
+	informers "github.com/infobloxopen/atlas-db/pkg/client/informers/externalversions"
+	"github.com/infobloxopen/atlas-db/pkg/signals"
 )
 
 var (

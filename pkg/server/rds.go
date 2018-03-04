@@ -1,7 +1,7 @@
 package server
 
 import (
-        atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 )
 
 type RDSPlugin atlas.RDSPlugin

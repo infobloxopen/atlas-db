@@ -1,7 +1,7 @@
 package server
 
 import (
-        atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 

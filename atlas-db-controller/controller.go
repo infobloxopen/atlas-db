@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	atlasdbv1alpha1 "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
 	atlasscheme "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/scheme"
 	informers "github.com/infobloxopen/atlas-db/pkg/client/informers/externalversions"
@@ -114,18 +114,14 @@ func NewController(
 			controller.enqueueDatabaseServer(new)
 		},
 	})
-	// Set up an event handler for when Pod resources change. This
-	// handler will lookup the owner of the given Pod, and if it is
-	// owned by a DatabaseServer resource will enqueue that DatabaseServer resource for
-	// processing. This way, we don't need to implement custom logic for
-	// handling Pod resources. More info on this pattern:
-	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
+	// Set up an event handlers for resources we might own, and then
+	// enqueue them if we own them.
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
-			newDepl := new.(*corev1.Pod)
-			oldDepl := old.(*corev1.Pod)
-			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
+			n := new.(*corev1.Pod)
+			o := old.(*corev1.Pod)
+			if n.ResourceVersion == o.ResourceVersion {
 				// Periodic resync will send update events for all known Pods.
 				// Two different versions of the same Pod will always have different RVs.
 				return
@@ -177,7 +173,7 @@ func (c *Controller) runWorker() {
 }
 
 // processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncHandler.
+// attempt to process it, by calling the syncServer.
 func (c *Controller) processNextWorkItem() bool {
 	obj, shutdown := c.workqueue.Get()
 
@@ -209,9 +205,9 @@ func (c *Controller) processNextWorkItem() bool {
 			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		// Run the syncHandler, passing it the namespace/name string of the
+		// Run the syncServer, passing it the namespace/name string of the
 		// DatabaseServer resource to be synced.
-		if err := c.syncHandler(key); err != nil {
+		if err := c.syncServer(key); err != nil {
 			return fmt.Errorf("error syncing '%s': %s", key, err.Error())
 		}
 		// Finally, if no error occurs we Forget this item so it does not
@@ -229,10 +225,10 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-// syncHandler compares the actual state with the desired, and attempts to
+// syncServer compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the DatabaseServer resource
 // with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
+func (c *Controller) syncServer(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -253,6 +249,29 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	err = c.syncService(key, s)
+	if err != nil {
+		return err
+	}
+
+	p := server.ActivePlugin(s)
+	
+	if _, ok := p.(server.PodPlugin); ok {
+		return c.syncPodServer(key, s)
+	}
+
+	if cp, ok := p.(server.CloudPlugin); ok {
+		return cp.CloudSync(&s.Spec)
+	}
+
+	return fmt.Errorf("databaseserver '%s' has an unimplemented plugin type", key)
+}
+
+func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
+	return nil
+}
+
+func (c *Controller) syncPodServer(key string, s *atlas.DatabaseServer) error {
 	podName := s.Name
 	if podName == "" {
 		// We choose to absorb the error here as the worker would requeue the
@@ -312,7 +331,7 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updateDatabaseServerStatus(s *atlasdbv1alpha1.DatabaseServer, pod *corev1.Pod) error {
+func (c *Controller) updateDatabaseServerStatus(s *atlas.DatabaseServer, pod *corev1.Pod) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance

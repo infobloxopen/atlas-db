@@ -1,8 +1,7 @@
 package server
 
 import (
-	"log"
-        atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -13,9 +12,8 @@ import (
 // the DatabaseServer resource that 'owns' it.
 func NewPod(s *atlas.DatabaseServer) *corev1.Pod {
 
-	plugin, ok := activePlugin(s).(PodPlugin)
+	plugin, ok := ActivePlugin(s).(PodPlugin)
 	if !ok {
-		log.Println("activePlugin: ", activePlugin(s))
 		return nil
 	}
 

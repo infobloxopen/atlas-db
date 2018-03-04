@@ -14,7 +14,11 @@ type PodPlugin interface {
 	podSpec(*atlas.DatabaseServerSpec) corev1.PodSpec
 }
 
-func activePlugin(s *atlas.DatabaseServer) Plugin {
+type CloudPlugin interface {
+	CloudSync(*atlas.DatabaseServerSpec) error
+}
+
+func ActivePlugin(s *atlas.DatabaseServer) Plugin {
 	if s.Spec.RDS != nil {
 		return convertRDS(s.Spec.RDS)
 	}

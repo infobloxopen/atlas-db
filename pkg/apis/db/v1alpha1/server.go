@@ -21,42 +21,49 @@ type DatabaseServer struct {
 // DatabaseServerSpec is the spec for a DatabaseServer resource
 type DatabaseServerSpec struct {
 	DatabaseServerPlugin
-	Volumes          []corev1.Volume
-	RootUserName     string
-	RootUserNameFrom *corev1.EnvVarSource
-	RootPassword     string
-	RootPasswordFrom *corev1.EnvVarSource
-	ServicePort      int32
-	Port             int32
+	Volumes               []corev1.Volume      `json:"volumes"`
+	SuperUser             string               `json:"superUser"`
+	SuperUserFrom         *corev1.EnvVarSource `json:"superUserFrom"`
+	SuperUserPassword     string               `json:"superUserPassword"`
+	SuperUserPasswordFrom *corev1.EnvVarSource `json:"superUserPasswordFrom"`
+	ServicePort           int32                `json:"servicePort"`
+	Port                  int32                `john:"port"`
 }
 
 // DatabaseServerPlugin represents the type and method used
 // to provision a database server. Only one of its members
 // may be set.
 type DatabaseServerPlugin struct {
-	RDS      *RDSPlugin
-	MySQL    *MySQLPlugin
-	Postgres *PostgresPlugin
+	RDS      *RDSPlugin      `json:"rds"`
+	MySQL    *MySQLPlugin    `json:"mySQL"`
+	Postgres *PostgresPlugin `json:"postgres"`
 }
 
 // RDSPlugin contains the details needed to provision an RDS instance.
 type RDSPlugin struct {
-	AllocatedStorage     int32
-	Iops                 int32
-	DBInstanceClass      string
-	DBInstanceIdentifier string
-	DBSubnetGroupName    string
-	Engine               string
+	AllocatedStorage     int32  `json:"allocatedStorage"`
+	Iops                 int32  `json:"iops"`
+	DBInstanceClass      string `json:"dbInstanceClass"`
+	DBInstanceIdentifier string `json:"dbInstanceIdentifier"`
+	DBSubnetGroupName    string `json:"dbSubnetGroupName"`
+	Engine               string `json:"engine"`
 }
 
 // MySQLPlugin contains the details needed to provision a MySQL instance.
 type MySQLPlugin struct {
-	Image string
-	Version string
+	Image        string `json:"image"`
+	Version      string `json:"version"`
+	DataVolume   string `json:"dataVolume"`
+	ConfigVolume string `json:"configVolume"`
 }
 
 // PostgresPlugin contains the details needed to provision a Postgres instance.
-type PostgresPlugin MySQLPlugin
+type PostgresPlugin struct {
+	Image      string `json:"image"`
+	Version    string `json:"version"`
+	DataVolume string `json:"dataVolume"`
+	InitdbArgs string `json:"initdbArgs"`
+}
 
 // DatabaseServerStatus is the status for a DatabaseServer resource
 type DatabaseServerStatus struct {

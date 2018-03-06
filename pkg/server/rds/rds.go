@@ -1,4 +1,4 @@
-package server
+package rds
 
 import (
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
@@ -10,7 +10,11 @@ func (p *RDSPlugin) Name() string {
 	return "RDS"
 }
 
-func convertRDS(a *atlas.RDSPlugin) *RDSPlugin {
+func Convert(a *atlas.RDSPlugin) *RDSPlugin {
 	p := RDSPlugin(*a)
 	return &p
+}
+
+func SyncCloud(key string, s *atlas.DatabaseServer) error {
+	return nil
 }

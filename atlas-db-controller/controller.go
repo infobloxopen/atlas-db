@@ -30,6 +30,7 @@ import (
 	listers "github.com/infobloxopen/atlas-db/pkg/client/listers/db/v1alpha1"
 
 	"github.com/infobloxopen/atlas-db/pkg/server"
+	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
 )
 
 const controllerAgentName = "atlas-db-controller"
@@ -256,12 +257,13 @@ func (c *Controller) syncServer(key string) error {
 
 	p := server.ActivePlugin(s)
 	
-	if _, ok := p.(server.PodPlugin); ok {
-		return c.syncPodServer(key, s)
+	glog.V(4).Infof("DatabaseServer %s has plugin type: %T", key, p)
+	if pp, ok := p.(plugin.PodPlugin); ok {
+		return c.syncPodServer(pp, key, s)
 	}
 
-	if cp, ok := p.(server.CloudPlugin); ok {
-		return cp.CloudSync(&s.Spec)
+	if cp, ok := p.(plugin.CloudPlugin); ok {
+		return cp.SyncCloud(key, s)
 	}
 
 	return fmt.Errorf("databaseserver '%s' has an unimplemented plugin type", key)
@@ -271,7 +273,7 @@ func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
 	return nil
 }
 
-func (c *Controller) syncPodServer(key string, s *atlas.DatabaseServer) error {
+func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.DatabaseServer) error {
 	podName := s.Name
 	if podName == "" {
 		// We choose to absorb the error here as the worker would requeue the
@@ -285,7 +287,7 @@ func (c *Controller) syncPodServer(key string, s *atlas.DatabaseServer) error {
 	pod, err := c.podsLister.Pods(s.Namespace).Get(podName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
-		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Create(server.NewPod(s))
+		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Create(p.CreatePod(key, s))
 	}
 	
 	// If an error occurs during Get/Create, we'll requeue the item so we can
@@ -304,12 +306,11 @@ func (c *Controller) syncPodServer(key string, s *atlas.DatabaseServer) error {
 	}
 
 	/*
-	// If this number of the replicas on the DatabaseServer resource is specified, and the
-	// number does not equal the current desired replicas on the Pod, we
-	// should update the Pod resource.
-	if s.Spec.Replicas != nil && *s.Spec.Replicas != *pod.Spec.Replicas {
-		glog.V(4).Infof("DatabaseServer %s replicas: %d, pod replicas: %d", name, *s.Spec.Replicas, *pod.Spec.Replicas)
-		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(server.NewPod(s))
+	// Update the pod resource to match the spec
+	diffs := p.DiffPod(s)
+	if diffs != "" {
+		glog.V(4).Infof("DatabaseServer %s needs update: %s", diffs)
+		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(p.CreatePod(key, s))
 	}
 
 	// If an error occurs during Update, we'll requeue the item so we can

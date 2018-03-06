@@ -140,8 +140,8 @@ func (in *DatabaseServerSpec) DeepCopyInto(out *DatabaseServerSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.RootUserNameFrom != nil {
-		in, out := &in.RootUserNameFrom, &out.RootUserNameFrom
+	if in.SuperUserFrom != nil {
+		in, out := &in.SuperUserFrom, &out.SuperUserFrom
 		if *in == nil {
 			*out = nil
 		} else {
@@ -149,8 +149,8 @@ func (in *DatabaseServerSpec) DeepCopyInto(out *DatabaseServerSpec) {
 			(*in).DeepCopyInto(*out)
 		}
 	}
-	if in.RootPasswordFrom != nil {
-		in, out := &in.RootPasswordFrom, &out.RootPasswordFrom
+	if in.SuperUserPasswordFrom != nil {
+		in, out := &in.SuperUserPasswordFrom, &out.SuperUserPasswordFrom
 		if *in == nil {
 			*out = nil
 		} else {

@@ -70,11 +70,31 @@ spec:
       secretKeyRef:
         name: mydbsecrets
         key: adminpw
-  mysql:
-    dsnFrom:
+  server: mydbserver
+```
+
+Or, if you didn't use a `DatabaseServer` to provision the server:
+
+```
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: Database
+metadata:
+  name: mydb
+spec:
+  users:
+  - name: mydb
+    password: foo
+    role: read
+  - name: mydbadmin
+    passwordFrom:
       secretKeyRef:
-        name: mydbserver
-        key: dsn
+        name: mydbsecrets
+        key: adminpw
+  dsnFrom:
+    secretKeyRef:
+      name: mysecrets
+      key: dsn
+  serverType: mysql
 ```
 
 ## Database Schemas

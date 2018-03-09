@@ -18,6 +18,14 @@ limitations under the License.
 
 package v1alpha1
 
+// DatabaseListerExpansion allows custom methods to be added to
+// DatabaseLister.
+type DatabaseListerExpansion interface{}
+
+// DatabaseNamespaceListerExpansion allows custom methods to be added to
+// DatabaseNamespaceLister.
+type DatabaseNamespaceListerExpansion interface{}
+
 // DatabaseServerListerExpansion allows custom methods to be added to
 // DatabaseServerLister.
 type DatabaseServerListerExpansion interface{}

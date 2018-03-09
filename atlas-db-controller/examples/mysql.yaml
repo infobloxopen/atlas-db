@@ -8,3 +8,28 @@ spec:
   rootPassword: "root"
   mySQL:
     image: mysql
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: Database
+metadata:
+  name: mydb
+spec:
+  users:
+  - name: me
+    password: foo
+    role: admin
+  - name: you
+    password: bar
+    role: read
+  server: mydbserver
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: Database
+metadata:
+  name: myappdb
+spec:
+  database: mydb
+  git:
+    repo: github.com/infobloxopen/atlas-contacts-app
+    dir: migrations
+    version: 100

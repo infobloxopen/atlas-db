@@ -52,7 +52,7 @@ const (
 
 // Controller is the controller implementation for DatabaseServer resources
 type Controller struct {
-	kubeclientset kubernetes.Interface
+	kubeclientset  kubernetes.Interface
 	atlasclientset clientset.Interface
 
 	podsLister    corelisters.PodLister
@@ -63,7 +63,7 @@ type Controller struct {
 	dbsSynced     cache.InformerSynced
 
 	serverQueue workqueue.RateLimitingInterface
-	dbQueue workqueue.RateLimitingInterface
+	dbQueue     workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
 }
@@ -128,11 +128,11 @@ func NewController(
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
-			n := new.(*corev1.Pod)
-			o := old.(*corev1.Pod)
-			if n.ResourceVersion == o.ResourceVersion {
-				// Periodic resync will send update events for all known Pods.
-				// Two different versions of the same Pod will always have different RVs.
+			n := new.(metav1.Object)
+			o := old.(metav1.Object)
+			if n.GetResourceVersion() == o.GetResourceVersion() {
+				// Periodic resync will send update events for all known objects
+				// Two different versions of the same object will always have different RVs.
 				return
 			}
 			controller.handleObject(new)

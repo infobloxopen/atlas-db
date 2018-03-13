@@ -133,7 +133,7 @@ func (p *MySQLPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
 		return err
 	}
 	// check if it exists; if not create it
-	ddl := fmt.Sprintf("create database if not exists `?`", db.Name)
+	ddl := fmt.Sprintf("create database if not exists `%s`", db.Name)
 	_, err = sqldb.Exec(ddl)
 	if err != nil {
 		return err

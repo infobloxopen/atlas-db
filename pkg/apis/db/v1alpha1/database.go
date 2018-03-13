@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -20,19 +19,19 @@ type Database struct {
 
 // DatabaseSpec is the spec for a Database resource
 type DatabaseSpec struct {
-	Users      []DatabaseUser       `json:"users"`
-	Dsn        string               `json:"dsn"`
-	DsnFrom    *corev1.EnvVarSource `json:"superUserFrom"`
-	Server     string               `json:"server"`
-	ServerType string               `json:"serverType"`
+	Users      []DatabaseUser `json:"users"`
+	Dsn        string         `json:"dsn"`
+	DsnFrom    *ValueSource   `json:"superUserFrom"`
+	Server     string         `json:"server"`
+	ServerType string         `json:"serverType"`
 }
 
 // DatabaseUser represents a user to provision
 type DatabaseUser struct {
-	Name         string               `json:"name"`
-	Password     string               `json:"password"`
-	PasswordFrom *corev1.EnvVarSource `json:"passwordFrom"`
-	Role         string               `json:"role"`
+	Name         string       `json:"name"`
+	Password     string       `json:"password"`
+	PasswordFrom *ValueSource `json:"passwordFrom"`
+	Role         string       `json:"role"`
 }
 
 // DatabaseStatus is the status for a Database resource

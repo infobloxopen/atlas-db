@@ -1,6 +1,8 @@
 package server
 
 import (
+	"strings"
+
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 
 	"github.com/infobloxopen/atlas-db/pkg/server/mysql"
@@ -25,3 +27,12 @@ func ActivePlugin(s *atlas.DatabaseServer) plugin.Plugin {
 	return nil
 }
 
+func NewDBPlugin(serverType string) plugin.DatabasePlugin {
+	switch strings.ToLower(serverType) {
+	case "mysql":
+		return &mysql.MySQLPlugin{}
+	case "postgres":
+		return &postgres.PostgresPlugin{}
+	}
+	return nil
+}

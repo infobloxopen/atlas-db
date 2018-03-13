@@ -21,13 +21,13 @@ type DatabaseServer struct {
 // DatabaseServerSpec is the spec for a DatabaseServer resource
 type DatabaseServerSpec struct {
 	DatabaseServerPlugin
-	Volumes               []corev1.Volume      `json:"volumes"`
-	SuperUser             string               `json:"superUser"`
-	SuperUserFrom         *corev1.EnvVarSource `json:"superUserFrom"`
-	SuperUserPassword     string               `json:"superUserPassword"`
-	SuperUserPasswordFrom *corev1.EnvVarSource `json:"superUserPasswordFrom"`
-	ServicePort           int32                `json:"servicePort"`
-	Port                  int32                `john:"port"`
+	Volumes               []corev1.Volume `json:"volumes"`
+	SuperUser             string          `json:"superUser"`
+	SuperUserFrom         *ValueSource    `json:"superUserFrom"`
+	SuperUserPassword     string          `json:"superUserPassword"`
+	SuperUserPasswordFrom *ValueSource    `json:"superUserPasswordFrom"`
+	ServicePort           int32           `json:"servicePort"`
+	Port                  int32           `john:"port"`
 }
 
 // DatabaseServerPlugin represents the type and method used

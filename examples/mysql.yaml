@@ -5,7 +5,7 @@ metadata:
 spec:
   servicePort: 3306
   port: 3306
-  rootPassword: "root"
+  superUserPassword: "root"
   mySQL:
     image: mysql
 ---
@@ -21,10 +21,12 @@ spec:
   - name: you
     password: bar
     role: read
-  server: mydbserver
+  serverType: mysql
+  dsn: "root:root@tcp(mydbserver.default:3306)/mysql?charset=utf8&parseTime=True"
+#  server: mydbserver
 ---
 apiVersion: atlasdb.infoblox.com/v1alpha1
-kind: Database
+kind: DatabaseSchema
 metadata:
   name: myappdb
 spec:

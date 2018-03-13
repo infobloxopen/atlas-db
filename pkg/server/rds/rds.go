@@ -1,20 +1,39 @@
 package rds
 
 import (
+	"strings"
+
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
+	"github.com/infobloxopen/atlas-db/pkg/server/mysql"
+	"github.com/infobloxopen/atlas-db/pkg/server/postgres"
 )
 
 type RDSPlugin atlas.RDSPlugin
-
-func (p *RDSPlugin) Name() string {
-	return "RDS"
-}
 
 func Convert(a *atlas.RDSPlugin) *RDSPlugin {
 	p := RDSPlugin(*a)
 	return &p
 }
 
-func SyncCloud(key string, s *atlas.DatabaseServer) error {
+func (p *RDSPlugin) Name() string {
+	return "RDS"
+}
+
+func (p *RDSPlugin) DatabasePlugin() plugin.DatabasePlugin {
+        switch strings.ToLower(p.Engine) {
+        case "mysql":
+                return &mysql.MySQLPlugin{}
+        case "postgres":
+                return &postgres.PostgresPlugin{}
+        }
+        return nil
+}
+
+func (p *RDSPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
+	return ""
+}
+
+func (p *RDSPlugin) SyncCloud(key string, s *atlas.DatabaseServer) error {
 	return nil
 }

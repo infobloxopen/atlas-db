@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
@@ -36,42 +37,40 @@ import (
 const controllerAgentName = "atlas-db-controller"
 
 const (
-	// SuccessSynced is used as part of the Event 'reason' when a DatabaseServer is synced
+	// SuccessSynced is used as part of the Event 'reason' when a resource is synced
 	SuccessSynced = "Synced"
-	// ErrResourceExists is used as part of the Event 'reason' when a DatabaseServer fails
-	// to sync due to a Pod of the same name already existing.
+	// ErrResourceExists is used as part of the Event 'reason' when a resource fails
+	// to sync due to a resource it should own already existing
 	ErrResourceExists = "ErrResourceExists"
 
-	// MessageResourceExists is the message used for Events when a resource
-	// fails to sync due to a Pod already existing
-	MessageResourceExists = "Resource %q already exists and is not managed by DatabaseServer"
-	// MessageResourceSynced is the message used for an Event fired when a DatabaseServer
-	// is synced successfully
-	MessageResourceSynced = "DatabaseServer synced successfully"
+	MessageServiceExists  = "Service %q already exists and is not managed by DatabaseServer"
+	MessagePodExists      = "Pod %q already exists and is not managed by DatabaseServer"
+	MessageServerSynced   = "DatabaseServer synced successfully"
+	MessageDatabaseSynced = "Database synced successfully"
+	MessageSchemaSynced   = "DatabaseSchema synced successfully"
 )
 
 // Controller is the controller implementation for DatabaseServer resources
 type Controller struct {
-	// kubeclientset is a standard kubernetes clientset
-	kubeclientset kubernetes.Interface
-	// atlasclientset is a clientset for our own API group
+	kubeclientset  kubernetes.Interface
 	atlasclientset clientset.Interface
 
-	podsLister    corelisters.PodLister
-	podsSynced    cache.InformerSynced
-	serversLister listers.DatabaseServerLister
-	serversSynced cache.InformerSynced
+	podsLister     corelisters.PodLister
+	podsSynced     cache.InformerSynced
+	servicesLister corelisters.ServiceLister
+	servicesSynced cache.InformerSynced
+	serversLister  listers.DatabaseServerLister
+	serversSynced  cache.InformerSynced
+	dbsLister      listers.DatabaseLister
+	dbsSynced      cache.InformerSynced
 
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-	// recorder is an event recorder for recording Event resources to the
-	// Kubernetes API.
+	serverQueue workqueue.RateLimitingInterface
+	dbQueue     workqueue.RateLimitingInterface
+
 	recorder record.EventRecorder
 }
+
+type syncHandler func(string) error
 
 // NewController returns a new atlas DB controller
 func NewController(
@@ -82,9 +81,10 @@ func NewController(
 
 	// obtain references to shared index informers for Secrets and PVCs
 	//secretsInformer := kubeInformerFactory.Apps().V1().Secrets()
-	//pvcInformer := kubeInformerFactory.Apps().V1().PersistentVolumeClaims()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	serverInformer := atlasInformerFactory.Atlasdb().V1alpha1().DatabaseServers()
+	dbInformer := atlasInformerFactory.Atlasdb().V1alpha1().Databases()
 
 	// Create event broadcaster
 	// Add atlas-db-controller types to the default Kubernetes Scheme so Events can be
@@ -101,9 +101,14 @@ func NewController(
 		atlasclientset: atlasclientset,
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
+		servicesLister: serviceInformer.Lister(),
+		servicesSynced: serviceInformer.Informer().HasSynced,
 		serversLister:  serverInformer.Lister(),
 		serversSynced:  serverInformer.Informer().HasSynced,
-		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseServers"),
+		serverQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseServers"),
+		dbsLister:      dbInformer.Lister(),
+		dbsSynced:      dbInformer.Informer().HasSynced,
+		dbQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Databases"),
 		recorder:       recorder,
 	}
 
@@ -115,47 +120,62 @@ func NewController(
 			controller.enqueueDatabaseServer(new)
 		},
 	})
+	// Set up an event handler for when DatabaseServer resources change
+	dbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueDatabase,
+		UpdateFunc: func(old, new interface{}) {
+			controller.enqueueDatabase(new)
+		},
+	})
 	// Set up an event handlers for resources we might own, and then
 	// enqueue them if we own them.
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.handleObject,
-		UpdateFunc: func(old, new interface{}) {
-			n := new.(*corev1.Pod)
-			o := old.(*corev1.Pod)
-			if n.ResourceVersion == o.ResourceVersion {
-				// Periodic resync will send update events for all known Pods.
-				// Two different versions of the same Pod will always have different RVs.
-				return
-			}
-			controller.handleObject(new)
-		},
-		DeleteFunc: controller.handleObject,
-	})
+	objInformers := []cache.SharedInformer{
+		podInformer.Informer(),
+		serviceInformer.Informer(),
+	}
+	for _, inf := range objInformers {
+		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: controller.handleObject,
+			UpdateFunc: func(old, new interface{}) {
+				n := new.(metav1.Object)
+				o := old.(metav1.Object)
+				if n.GetResourceVersion() == o.GetResourceVersion() {
+					// Periodic resync will send update events for all known objects
+					// Two different versions of the same object will always have different RVs.
+					return
+				}
+				controller.handleObject(new)
+			},
+			DeleteFunc: controller.handleObject,
+		})
+	}
 
 	return controller
 }
 
 // Run will set up the event handlers for types we are interested in, as well
 // as syncing informer caches and starting workers. It will block until stopCh
-// is closed, at which point it will shutdown the workqueue and wait for
+// is closed, at which point it will shutdown the queues and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	defer runtime.HandleCrash()
-	defer c.workqueue.ShutDown()
+	defer c.serverQueue.ShutDown()
+	defer c.dbQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	glog.Info("Starting DatabaseServer controller")
+	glog.Info("Starting atlas-db-controller")
 
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.servicesSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
 	glog.Info("Starting workers")
 	// Launch two workers to process DatabaseServer resources
 	for i := 0; i < threadiness; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
+		go wait.Until(c.runServerWorker, time.Second, stopCh)
+		go wait.Until(c.runDatabaseWorker, time.Second, stopCh)
 	}
 
 	glog.Info("Started workers")
@@ -165,55 +185,46 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	return nil
 }
 
-// runWorker is a long-running function that will continually call the
+// run*Worker are long-running functions that will continually call the
 // processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
+// queue.
+func (c *Controller) runServerWorker() {
+	for c.processNextWorkItem(c.serverQueue, c.syncServer) {
 	}
 }
 
-// processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncServer.
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
+func (c *Controller) runDatabaseWorker() {
+	for c.processNextWorkItem(c.dbQueue, c.syncDatabase) {
+	}
+}
+
+// processNextWorkItem will read a single work item off the queue and
+// attempt to process it, by calling syncServer.
+func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, syncObject syncHandler) bool {
+	obj, shutdown := q.Get()
 
 	if shutdown {
 		return false
 	}
 
-	// We wrap this block in a func so we can defer c.workqueue.Done.
+	// We wrap this block in a func so we can defer q.Done.
 	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
+		defer q.Done(obj)
 		var key string
 		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
+
 		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			q.Forget(obj)
+			runtime.HandleError(fmt.Errorf("expected string in work queue but got %#v", obj))
 			return nil
 		}
-		// Run the syncServer, passing it the namespace/name string of the
-		// DatabaseServer resource to be synced.
-		if err := c.syncServer(key); err != nil {
+		// Run the sync handler, passing it the namespace/name string of the resource to be synced.
+		if err := syncObject(key); err != nil {
 			return fmt.Errorf("error syncing '%s': %s", key, err.Error())
 		}
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
-		c.workqueue.Forget(obj)
+		q.Forget(obj)
 		glog.Infof("Successfully synced '%s'", key)
 		return nil
 	}(obj)
@@ -224,6 +235,84 @@ func (c *Controller) processNextWorkItem() bool {
 	}
 
 	return true
+}
+
+func (c *Controller) syncDatabase(key string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+
+	// Get the Database resource with this namespace/name
+	db, err := c.dbsLister.Databases(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			runtime.HandleError(fmt.Errorf("database '%s' in work queue no longer exists", key))
+			return nil
+		}
+
+		return err
+	}
+
+	glog.V(4).Infof("Database %s: %v", key, db)
+
+	var p plugin.DatabasePlugin
+	var s *atlas.DatabaseServer
+	if db.Spec.Server != "" {
+		s, err = c.serversLister.DatabaseServers(namespace).Get(db.Spec.Server)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// hopefully it will show up at some point; should we just log a warning
+				runtime.HandleError(fmt.Errorf("database '%s' refers to a non-existent server", key))
+			} else {
+				runtime.HandleError(fmt.Errorf("error retrieving database server '%s' for database '%s': %s", db.Spec.Server, key, err))
+			}
+			return nil
+		}
+	}
+
+	serverType := db.Spec.ServerType
+	if serverType == "" && s == nil {
+		runtime.HandleError(fmt.Errorf("database '%s' has no serverType or server set", key))
+		return nil
+	}
+
+	if serverType != "" {
+		p = server.NewDBPlugin(serverType)
+	} else {
+		p = server.ActivePlugin(s).DatabasePlugin()
+	}
+
+	if p == nil {
+		runtime.HandleError(fmt.Errorf("database '%s' does not have a valid database plugin"))
+		return nil
+	}
+
+	dsn := db.Spec.Dsn
+	if dsn == "" {
+		dsnFrom := db.Spec.DsnFrom
+		if dsnFrom == nil && s != nil {
+			dsnFrom = &atlas.ValueSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: s.Name,
+					},
+					Key: "dsn",
+				},
+			}
+		}
+		if dsnFrom == nil {
+			return fmt.Errorf("database '%s' has no valid DSN or source", key)
+		}
+		dsn, err = dsnFrom.Resolve(c.kubeclientset, db.Namespace)
+		if err != nil {
+			return err
+		}
+	}
+
+	return p.SyncDatabase(db, dsn)
 }
 
 // syncServer compares the actual state with the desired, and attempts to
@@ -256,40 +345,111 @@ func (c *Controller) syncServer(key string) error {
 	}
 
 	p := server.ActivePlugin(s)
-	
+
 	glog.V(4).Infof("DatabaseServer %s has plugin type: %T", key, p)
+	err = fmt.Errorf("databaseserver '%s' has an unimplemented plugin type", key)
+
 	if pp, ok := p.(plugin.PodPlugin); ok {
-		return c.syncPodServer(pp, key, s)
+		err = c.syncPodServer(pp, key, s)
 	}
 
 	if cp, ok := p.(plugin.CloudPlugin); ok {
-		return cp.SyncCloud(key, s)
+		err = cp.SyncCloud(key, s)
 	}
 
-	return fmt.Errorf("databaseserver '%s' has an unimplemented plugin type", key)
+	if err != nil {
+		return err
+	}
+
+	err = c.syncSecret(key, s)
+	if err != nil {
+		return err
+	}
+
+	err = c.syncService(key, s)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
+	return nil
+}
+
+func (c *Controller) objMeta(o metav1.Object, kind string) metav1.ObjectMeta {
+	labels := map[string]string{
+		"controller": o.GetName(),
+	}
+	return metav1.ObjectMeta{
+		Name:      o.GetName(),
+		Namespace: o.GetNamespace(),
+		Labels:    labels,
+		OwnerReferences: []metav1.OwnerReference{
+			*metav1.NewControllerRef(o, schema.GroupVersionKind{
+				Group:   atlas.SchemeGroupVersion.Group,
+				Version: atlas.SchemeGroupVersion.Version,
+				Kind:    kind,
+			}),
+		},
+	}
 }
 
 func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
+	// Creates a service with the same name as the server
+	svc, err := c.servicesLister.Services(s.Namespace).Get(s.Name)
+
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		svc, err = c.kubeclientset.CoreV1().Services(s.Namespace).Create(
+			&corev1.Service{
+				ObjectMeta: c.objMeta(s, "DatabaseServer"),
+				Spec: corev1.ServiceSpec{
+					Selector: map[string]string{
+						"databaseserver": s.Name,
+					},
+					Ports: []corev1.ServicePort{
+						{
+							Protocol: "TCP",
+							Port:     s.Spec.ServicePort,
+						},
+					},
+				},
+			},
+		)
+	}
+
+	// If an error occurs during Get/Create, we'll requeue the item so we can
+	// attempt processing again later. This could have been caused by a
+	// temporary network failure, or any other transient reason.
+	if err != nil {
+		return err
+	}
+
+	// If the Service is not controlled by this DatabaseServer resource, we should log
+	// a warning to the event recorder and ret
+	if !metav1.IsControlledBy(svc, s) {
+		msg := fmt.Sprintf(MessageServiceExists, svc.Name)
+		c.recorder.Event(s, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
+	// TODO: compare existing service to spec and reconcile
+
+	// TODO: Update status
 	return nil
 }
 
 func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.DatabaseServer) error {
-	podName := s.Name
-	if podName == "" {
-		// We choose to absorb the error here as the worker would requeue the
-		// resource otherwise. Instead, the next time the resource is updated
-		// the resource will be queued again.
-		runtime.HandleError(fmt.Errorf("%s: pod name must be specified", key))
-		return nil
-	}
+	// Creates a pod with the same name as the server
+	pod, err := c.podsLister.Pods(s.Namespace).Get(s.Name)
 
-	// Get the pod with the name specified in Foo.spec
-	pod, err := c.podsLister.Pods(s.Namespace).Get(podName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
 		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Create(p.CreatePod(key, s))
 	}
-	
+
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
@@ -300,25 +460,26 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 	// If the Pod is not controlled by this DatabaseServer resource, we should log
 	// a warning to the event recorder and ret
 	if !metav1.IsControlledBy(pod, s) {
-		msg := fmt.Sprintf(MessageResourceExists, pod.Name)
+		msg := fmt.Sprintf(MessagePodExists, pod.Name)
 		c.recorder.Event(s, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
 
+	//TODO: Compare existing pod to spec and reconcile
 	/*
-	// Update the pod resource to match the spec
-	diffs := p.DiffPod(s)
-	if diffs != "" {
-		glog.V(4).Infof("DatabaseServer %s needs update: %s", diffs)
-		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(p.CreatePod(key, s))
-	}
+		// Update the pod resource to match the spec
+		diffs := p.DiffPod(s)
+		if diffs != "" {
+			glog.V(4).Infof("DatabaseServer %s needs update: %s", diffs)
+			pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(p.CreatePod(key, s))
+		}
 
-	// If an error occurs during Update, we'll requeue the item so we can
-	// attempt processing again later. THis could have been caused by a
-	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
-	}
+		// If an error occurs during Update, we'll requeue the item so we can
+		// attempt processing again later. THis could have been caused by a
+		// temporary network failure, or any other transient reason.
+		if err != nil {
+			return err
+		}
 	*/
 
 	// Finally, we update the status block of the DatabaseServer resource to reflect the
@@ -328,7 +489,7 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 		return err
 	}
 
-	c.recorder.Event(s, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	c.recorder.Event(s, corev1.EventTypeNormal, SuccessSynced, MessageServerSynced)
 	return nil
 }
 
@@ -346,24 +507,26 @@ func (c *Controller) updateDatabaseServerStatus(s *atlas.DatabaseServer, pod *co
 	return err
 }
 
-// enqueueDatabaseServer takes a DatabaseServer resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than DatabaseServer.
-func (c *Controller) enqueueDatabaseServer(obj interface{}) {
+func (c *Controller) enqueue(obj interface{}, q workqueue.RateLimitingInterface) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		runtime.HandleError(err)
 		return
 	}
-	c.workqueue.AddRateLimited(key)
+	q.AddRateLimited(key)
+}
+
+func (c *Controller) enqueueDatabaseServer(obj interface{}) {
+	c.enqueue(obj, c.serverQueue)
+}
+
+func (c *Controller) enqueueDatabase(obj interface{}) {
+	c.enqueue(obj, c.dbQueue)
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
-// to find the DatabaseServer resource that 'owns' it. It does this by looking at the
-// objects metadata.ownerReferences field for an appropriate OwnerReference.
-// It then enqueues that DatabaseServer resource to be processed. If the object does not
-// have an appropriate OwnerReference, it will simply be skipped.
+// to find the resource that 'owns' it.
 func (c *Controller) handleObject(obj interface{}) {
 	var object metav1.Object
 	var ok bool
@@ -382,19 +545,28 @@ func (c *Controller) handleObject(obj interface{}) {
 	}
 	glog.V(4).Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
-		// If this object is not owned by a DatabaseServer, we should not do anything more
-		// with it.
-		if ownerRef.Kind != "DatabaseServer" {
+		if ownerRef.Kind == "DatabaseServer" {
+			s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)
+			if err != nil {
+				glog.V(4).Infof("ignoring orphaned object '%s' of databaseserver '%s'", object.GetSelfLink(), ownerRef.Name)
+				return
+			}
+
+			c.enqueueDatabaseServer(s)
 			return
 		}
 
-		s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)
-		if err != nil {
-			glog.V(4).Infof("ignoring orphaned object '%s' of databaseserver '%s'", object.GetSelfLink(), ownerRef.Name)
+		if ownerRef.Kind == "Database" {
+			d, err := c.dbsLister.Databases(object.GetNamespace()).Get(ownerRef.Name)
+			if err != nil {
+				glog.V(4).Infof("ignoring orphaned object '%s' of database '%s'", object.GetSelfLink(), ownerRef.Name)
+				return
+			}
+
+			c.enqueueDatabase(d)
 			return
 		}
 
-		c.enqueueDatabaseServer(s)
 		return
 	}
 }

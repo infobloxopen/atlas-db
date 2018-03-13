@@ -27,12 +27,17 @@ import (
 
 type AtlasdbV1alpha1Interface interface {
 	RESTClient() rest.Interface
+	DatabasesGetter
 	DatabaseServersGetter
 }
 
 // AtlasdbV1alpha1Client is used to interact with features provided by the atlasdb.infoblox.com group.
 type AtlasdbV1alpha1Client struct {
 	restClient rest.Interface
+}
+
+func (c *AtlasdbV1alpha1Client) Databases(namespace string) DatabaseInterface {
+	return newDatabases(c, namespace)
 }
 
 func (c *AtlasdbV1alpha1Client) DatabaseServers(namespace string) DatabaseServerInterface {

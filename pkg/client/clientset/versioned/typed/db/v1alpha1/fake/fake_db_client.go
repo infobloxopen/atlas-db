@@ -28,6 +28,10 @@ type FakeAtlasdbV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeAtlasdbV1alpha1) Databases(namespace string) v1alpha1.DatabaseInterface {
+	return &FakeDatabases{c, namespace}
+}
+
 func (c *FakeAtlasdbV1alpha1) DatabaseServers(namespace string) v1alpha1.DatabaseServerInterface {
 	return &FakeDatabaseServers{c, namespace}
 }

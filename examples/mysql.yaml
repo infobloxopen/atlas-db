@@ -1,0 +1,37 @@
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 3306
+  port: 3306
+  superUserPassword: "root"
+  mySQL:
+    image: mysql
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: Database
+metadata:
+  name: mydb
+spec:
+  users:
+  - name: me
+    password: foo
+    role: admin
+  - name: you
+    password: bar
+    role: read
+  serverType: mysql
+  dsn: "root:root@tcp(mydbserver.default:3306)/mysql?charset=utf8&parseTime=True"
+#  server: mydbserver
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseSchema
+metadata:
+  name: myappdb
+spec:
+  database: mydb
+  git:
+    repo: github.com/infobloxopen/atlas-contacts-app
+    dir: migrations
+    version: 100

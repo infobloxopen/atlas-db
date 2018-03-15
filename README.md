@@ -1,5 +1,7 @@
 # atlas-db-controller
 
+**This is early code and not complete.**
+
 This controller manages three types of resources:
 
   - Database Servers

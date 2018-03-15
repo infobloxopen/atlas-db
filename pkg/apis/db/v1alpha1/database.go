@@ -21,7 +21,7 @@ type Database struct {
 type DatabaseSpec struct {
 	Users      []DatabaseUser `json:"users"`
 	Dsn        string         `json:"dsn"`
-	DsnFrom    *ValueSource   `json:"superUserFrom"`
+	DsnFrom    *ValueSource   `json:"dsnFrom"`
 	Server     string         `json:"server"`
 	ServerType string         `json:"serverType"`
 }

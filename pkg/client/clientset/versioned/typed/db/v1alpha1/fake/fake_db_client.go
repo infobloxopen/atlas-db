@@ -32,6 +32,10 @@ func (c *FakeAtlasdbV1alpha1) Databases(namespace string) v1alpha1.DatabaseInter
 	return &FakeDatabases{c, namespace}
 }
 
+func (c *FakeAtlasdbV1alpha1) DatabaseSchemas(namespace string) v1alpha1.DatabaseSchemaInterface {
+	return &FakeDatabaseSchemas{c, namespace}
+}
+
 func (c *FakeAtlasdbV1alpha1) DatabaseServers(namespace string) v1alpha1.DatabaseServerInterface {
 	return &FakeDatabaseServers{c, namespace}
 }

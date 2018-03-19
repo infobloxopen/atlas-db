@@ -26,6 +26,14 @@ type DatabaseListerExpansion interface{}
 // DatabaseNamespaceLister.
 type DatabaseNamespaceListerExpansion interface{}
 
+// DatabaseSchemaListerExpansion allows custom methods to be added to
+// DatabaseSchemaLister.
+type DatabaseSchemaListerExpansion interface{}
+
+// DatabaseSchemaNamespaceListerExpansion allows custom methods to be added to
+// DatabaseSchemaNamespaceLister.
+type DatabaseSchemaNamespaceListerExpansion interface{}
+
 // DatabaseServerListerExpansion allows custom methods to be added to
 // DatabaseServerLister.
 type DatabaseServerListerExpansion interface{}

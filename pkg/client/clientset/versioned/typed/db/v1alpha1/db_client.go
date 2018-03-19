@@ -28,6 +28,7 @@ import (
 type AtlasdbV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	DatabasesGetter
+	DatabaseSchemasGetter
 	DatabaseServersGetter
 }
 
@@ -38,6 +39,10 @@ type AtlasdbV1alpha1Client struct {
 
 func (c *AtlasdbV1alpha1Client) Databases(namespace string) DatabaseInterface {
 	return newDatabases(c, namespace)
+}
+
+func (c *AtlasdbV1alpha1Client) DatabaseSchemas(namespace string) DatabaseSchemaInterface {
+	return newDatabaseSchemas(c, namespace)
 }
 
 func (c *AtlasdbV1alpha1Client) DatabaseServers(namespace string) DatabaseServerInterface {

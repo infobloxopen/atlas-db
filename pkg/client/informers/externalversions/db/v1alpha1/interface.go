@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// Databases returns a DatabaseInformer.
 	Databases() DatabaseInformer
+	// DatabaseSchemas returns a DatabaseSchemaInformer.
+	DatabaseSchemas() DatabaseSchemaInformer
 	// DatabaseServers returns a DatabaseServerInformer.
 	DatabaseServers() DatabaseServerInformer
 }
@@ -44,6 +46,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // Databases returns a DatabaseInformer.
 func (v *version) Databases() DatabaseInformer {
 	return &databaseInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// DatabaseSchemas returns a DatabaseSchemaInformer.
+func (v *version) DatabaseSchemas() DatabaseSchemaInformer {
+	return &databaseSchemaInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // DatabaseServers returns a DatabaseServerInformer.

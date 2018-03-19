@@ -20,4 +20,6 @@ package v1alpha1
 
 type DatabaseExpansion interface{}
 
+type DatabaseSchemaExpansion interface{}
+
 type DatabaseServerExpansion interface{}

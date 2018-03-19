@@ -3,8 +3,8 @@ package v1alpha1
 import (
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -23,7 +23,7 @@ func (v *ValueSource) ToEnvVarSource() *corev1.EnvVarSource {
 	}
 	return &corev1.EnvVarSource{
 		ConfigMapKeyRef: v.ConfigMapKeyRef,
-		SecretKeyRef: v.SecretKeyRef,
+		SecretKeyRef:    v.SecretKeyRef,
 	}
 }
 
@@ -41,7 +41,7 @@ func (v *ValueSource) Resolve(c kubernetes.Interface, ns string) (string, error)
 			return s, nil
 		}
 		return "", fmt.Errorf("key '%s' not found in config map '%s.%s'",
-					v.ConfigMapKeyRef.Key, ns, v.ConfigMapKeyRef.Name)
+			v.ConfigMapKeyRef.Key, ns, v.ConfigMapKeyRef.Name)
 	}
 	//TODO: resolve from secret
 

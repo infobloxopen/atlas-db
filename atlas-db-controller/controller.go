@@ -127,7 +127,7 @@ func NewController(
 			controller.enqueueDatabaseServer(new)
 		},
 	})
-	// Set up an event handler for when DatabaseServer resources change
+	// Set up an event handler for when Database resources change
 	dbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueDatabase,
 		UpdateFunc: func(old, new interface{}) {
@@ -589,6 +589,12 @@ func (c *Controller) enqueueDatabaseServer(obj interface{}) {
 }
 
 func (c *Controller) enqueueDatabase(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		return
+	}
+	glog.Infof("enqueue database object: %s", object.GetName())
 	c.enqueue(obj, c.dbQueue)
 }
 
@@ -610,7 +616,7 @@ func (c *Controller) handleObject(obj interface{}) {
 		}
 		glog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
 	}
-	glog.V(4).Infof("Processing object: %s", object.GetName())
+	glog.Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		if ownerRef.Kind == "DatabaseServer" {
 			s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)

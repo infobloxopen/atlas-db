@@ -36,7 +36,8 @@ type DatabaseUser struct {
 
 // DatabaseStatus is the status for a Database resource
 type DatabaseStatus struct {
-	URL string `json:"url"`
+	State   string `json:"state"`
+	Message string `json:"message"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

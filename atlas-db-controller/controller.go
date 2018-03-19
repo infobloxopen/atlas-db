@@ -48,6 +48,13 @@ const (
 	MessageServerSynced   = "DatabaseServer synced successfully"
 	MessageDatabaseSynced = "Database synced successfully"
 	MessageSchemaSynced   = "DatabaseSchema synced successfully"
+
+	StateCreating = "Creating"
+	StateDeleting = "Deleting"
+	StateError    = "Error"
+	StatePending  = "Pending"
+	StateSuccess  = "Success"
+	StateUpdating = "Updating"
 )
 
 // Controller is the controller implementation for DatabaseServer resources
@@ -256,7 +263,12 @@ func (c *Controller) syncDatabase(key string) error {
 		return err
 	}
 
-	glog.V(4).Infof("Database %s: %v", key, db)
+	if db.Status.State == "" {
+		db, err = c.updateDatabaseStatus(key, db, StatePending, "")
+		if err != nil {
+			return err
+		}
+	}
 
 	var p plugin.DatabasePlugin
 	var s *atlas.DatabaseServer
@@ -264,18 +276,22 @@ func (c *Controller) syncDatabase(key string) error {
 		s, err = c.serversLister.DatabaseServers(namespace).Get(db.Spec.Server)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				// hopefully it will show up at some point; should we just log a warning
-				runtime.HandleError(fmt.Errorf("database '%s' refers to a non-existent server", key))
+				msg := fmt.Sprintf("waiting for database server '%s/%s'", namespace, db.Spec.Server)
+				c.updateDatabaseStatus(key, db, StatePending, msg)
 			} else {
 				runtime.HandleError(fmt.Errorf("error retrieving database server '%s' for database '%s': %s", db.Spec.Server, key, err))
 			}
-			return nil
+
+			// requeue
+			return err
 		}
 	}
 
 	serverType := db.Spec.ServerType
 	if serverType == "" && s == nil {
-		runtime.HandleError(fmt.Errorf("database '%s' has no serverType or server set", key))
+		msg := fmt.Sprintf("database '%s' has no serverType or server set", key)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
 		return nil
 	}
 
@@ -286,7 +302,9 @@ func (c *Controller) syncDatabase(key string) error {
 	}
 
 	if p == nil {
-		runtime.HandleError(fmt.Errorf("database '%s' does not have a valid database plugin"))
+		msg := fmt.Sprintf("database '%s' does not have a valid database plugin", key)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
 		return nil
 	}
 
@@ -304,15 +322,60 @@ func (c *Controller) syncDatabase(key string) error {
 			}
 		}
 		if dsnFrom == nil {
-			return fmt.Errorf("database '%s' has no valid DSN or source", key)
+			msg := fmt.Sprintf("database '%s' has no valid DSN or source", key)
+			c.updateDatabaseStatus(key, db, StateError, msg)
+			runtime.HandleError(fmt.Errorf(msg))
+			return nil
 		}
 		dsn, err = dsnFrom.Resolve(c.kubeclientset, db.Namespace)
 		if err != nil {
-			return err
+			if errors.IsNotFound(err) {
+				msg := "waiting for secret or configmap for DSN"
+				c.updateDatabaseStatus(key, db, StatePending, msg)
+				return err
+			}
+			msg := fmt.Sprintf("database '%s' has no valid DSN or source", key)
+			c.updateDatabaseStatus(key, db, StateError, msg)
+			runtime.HandleError(fmt.Errorf(msg))
+			return nil
 		}
 	}
 
-	return p.SyncDatabase(db, dsn)
+	err = p.SyncDatabase(db, dsn)
+	if err != nil {
+		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
+		return err
+	}
+
+	msg := fmt.Sprintf("Successfully synced database '%s'", key)
+	db, err = c.updateDatabaseStatus(key, db, StateSuccess, msg)
+	if err != nil {
+		runtime.HandleError(err)
+		return err
+	}
+
+	//TODO: Log some more events for troubleshoting
+	c.recorder.Event(db, corev1.EventTypeNormal, SuccessSynced, MessageDatabaseSynced)
+	return nil
+}
+
+func (c *Controller) updateDatabaseStatus(key string, db *atlas.Database, state, msg string) (*atlas.Database, error) {
+	copy := db.DeepCopy()
+	copy.Status.State = state
+	copy.Status.Message = msg
+	// Until #38113 is merged, we must use Update instead of UpdateStatus to
+	// update the Status block of the resource. UpdateStatus will not
+	// allow changes to the Spec of the resource, which is ideal for ensuring
+	// nothing other than resource status has been updated.
+	_, err := c.atlasclientset.AtlasdbV1alpha1().Databases(db.Namespace).Update(copy)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database '%s': %s", state, key, err))
+		return db, err
+	}
+	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus
+	return c.dbsLister.Databases(db.Namespace).Get(db.Name)
 }
 
 // syncServer compares the actual state with the desired, and attempts to
@@ -371,10 +434,14 @@ func (c *Controller) syncServer(key string) error {
 		return err
 	}
 
+	//TODO: Add a check to see if the db server is up and running and accessible via the Service and Secret
+	// and update the Status and Message appropriately
+
 	return nil
 }
 
 func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
+	//TODO: Create the secret here
 	return nil
 }
 
@@ -397,7 +464,7 @@ func (c *Controller) objMeta(o metav1.Object, kind string) metav1.ObjectMeta {
 }
 
 func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
-	// Creates a service with the same name as the server
+	// Creates a service with the same name as the server. TODO: maybe we should allow different?
 	svc, err := c.servicesLister.Services(s.Namespace).Get(s.Name)
 
 	// If the resource doesn't exist, we'll create it

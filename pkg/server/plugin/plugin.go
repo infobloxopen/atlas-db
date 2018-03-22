@@ -11,7 +11,7 @@ import (
 type Plugin interface {
 	Name() string
 	DatabasePlugin() DatabasePlugin
-	Dsn(string, *atlas.DatabaseServer) string
+	Dsn(string, string, *atlas.DatabaseServer) string
 }
 
 // CloudPlugin is for instances created by an IaaS platform
@@ -59,7 +59,3 @@ func AddMount(c *corev1.Container, name string, ro bool, path string) {
 			MountPath: path,
 		})
 }
-
-func GetDsn(d *atlas.Database) {
-}
-

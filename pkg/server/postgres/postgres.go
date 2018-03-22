@@ -16,7 +16,7 @@ func (p *PostgresPlugin) Name() string {
 	return "Postgres"
 }
 
-func (p *PostgresPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
+func (p *PostgresPlugin) Dsn(su, pw string, s *atlas.DatabaseServer) string {
 	return ""
 }
 

@@ -33,3 +33,19 @@ spec:
     kind: DatabaseSchema
     plural: databaseschemas
   scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          required:
+            - database
+            - git
+            - version
+          properties:
+            database:
+              type: string
+            git:
+              type: string
+            version:
+              type: integer
+              minimum: 0

@@ -24,6 +24,10 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
+	"github.com/mattes/migrate"
+	_ "github.com/mattes/migrate/database/postgres"
+	_ "github.com/mattes/migrate/source/github"
+
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
 	atlasscheme "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned/scheme"
@@ -70,9 +74,12 @@ type Controller struct {
 	serversSynced  cache.InformerSynced
 	dbsLister      listers.DatabaseLister
 	dbsSynced      cache.InformerSynced
+	schemasLister  listers.DatabaseSchemaLister
+	schemasSynced  cache.InformerSynced
 
 	serverQueue workqueue.RateLimitingInterface
 	dbQueue     workqueue.RateLimitingInterface
+	schemaQueue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
 }
@@ -92,6 +99,7 @@ func NewController(
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	serverInformer := atlasInformerFactory.Atlasdb().V1alpha1().DatabaseServers()
 	dbInformer := atlasInformerFactory.Atlasdb().V1alpha1().Databases()
+	schemaInformer := atlasInformerFactory.Atlasdb().V1alpha1().DatabaseSchemas()
 
 	// Create event broadcaster
 	// Add atlas-db-controller types to the default Kubernetes Scheme so Events can be
@@ -116,7 +124,11 @@ func NewController(
 		dbsLister:      dbInformer.Lister(),
 		dbsSynced:      dbInformer.Informer().HasSynced,
 		dbQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Databases"),
-		recorder:       recorder,
+		schemasLister:  schemaInformer.Lister(),
+		schemasSynced:  schemaInformer.Informer().HasSynced,
+		schemaQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseSchemas"),
+
+		recorder: recorder,
 	}
 
 	glog.Info("Setting up event handlers")
@@ -127,11 +139,18 @@ func NewController(
 			controller.enqueueDatabaseServer(new)
 		},
 	})
-	// Set up an event handler for when DatabaseServer resources change
+	// Set up an event handler for when Database resources change
 	dbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueDatabase,
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueDatabase(new)
+		},
+	})
+	// Set up an event handler for when DatabaseSchema resources change
+	schemaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueDatabaseSchema,
+		UpdateFunc: func(old, new interface{}) {
+			controller.enqueueDatabaseSchema(new)
 		},
 	})
 	// Set up an event handlers for resources we might own, and then
@@ -160,7 +179,7 @@ func NewController(
 	return controller
 }
 
-// Run will set up the event handlers for types we are interested in, as well
+// Run will set up the event handlers for types we are interested in, as well // XXX event handlers are set above
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the queues and wait for
 // workers to finish processing their current work items.
@@ -168,21 +187,25 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	defer runtime.HandleCrash()
 	defer c.serverQueue.ShutDown()
 	defer c.dbQueue.ShutDown()
+	defer c.schemaQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
 	glog.Info("Starting atlas-db-controller")
 
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.servicesSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.schemasSynced, c.servicesSynced); !ok {
+		// XXX actually, this is not error. the error is when we cannot start workers due to `cache is not ready` after certain timeout
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	glog.Info("Starting workers")
-	// Launch two workers to process DatabaseServer resources
+	glog.Info("Starting workers...")
+	// Launch two workers to process each resource in the group
 	for i := 0; i < threadiness; i++ {
+		// TODO make sure to do not try run all of three once per second on excatly the same moment
 		go wait.Until(c.runServerWorker, time.Second, stopCh)
 		go wait.Until(c.runDatabaseWorker, time.Second, stopCh)
+		go wait.Until(c.runSchemaWorker, time.Second, stopCh)
 	}
 
 	glog.Info("Started workers")
@@ -202,6 +225,11 @@ func (c *Controller) runServerWorker() {
 
 func (c *Controller) runDatabaseWorker() {
 	for c.processNextWorkItem(c.dbQueue, c.syncDatabase) {
+	}
+}
+
+func (c *Controller) runSchemaWorker() {
+	for c.processNextWorkItem(c.schemaQueue, c.syncSchema) {
 	}
 }
 
@@ -244,6 +272,81 @@ func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, sync
 	return true
 }
 
+func (c *Controller) syncSchema(key string) error {
+	glog.Infof("Schema key: %v", key)
+
+	// Convert the namespace/name string into a distinct namespace and name
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return err
+	}
+
+	// Get the Schema resource with this namespace/name
+	schema, err := c.schemasLister.DatabaseSchemas(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			runtime.HandleError(fmt.Errorf("schema '%s' in work queue no longer exists", key))
+			return nil
+		}
+		return err
+	}
+	glog.Info(schema.Spec)
+	dbName := schema.Spec.Database
+	db, err := c.dbsLister.Databases(namespace).Get(dbName)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("cannot get database `%s`: %s", dbName, err))
+		return err
+	}
+
+	glog.Info(db.Spec.ServerType)
+	glog.Info(db.Spec.Dsn)
+
+	if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
+		err = fmt.Errorf("unsupported database server type `%s`", db.Spec.ServerType)
+		runtime.HandleError(err)
+		return err
+	}
+
+	mgrt, err := migrate.New(schema.Spec.Git, db.Spec.Dsn)
+	if err != nil {
+		err = fmt.Errorf("cannot create migrate: %s", err)
+		runtime.HandleError(err)
+		return err
+	}
+	defer mgrt.Close()
+
+	ver, dirt, err := mgrt.Version()
+	if err != nil {
+		if err == migrate.ErrNilVersion {
+			glog.Infof("database `%s` has no migration applied", dbName)
+		} else {
+			err = fmt.Errorf("cannot get current database version: %s", err)
+			runtime.HandleError(err)
+			return err
+		}
+	}
+	if dirt {
+		// TODO we might want to notficate someone about this
+		err = fmt.Errorf("database `%s` (%s) is in dirty state (version is %d)", dbName, db.Spec.Dsn, ver)
+		runtime.HandleError(err)
+		return err
+	}
+	toVersion := uint(schema.Spec.Version)
+	if ver == toVersion {
+		glog.Infof("database `%s` has synced version %d", dbName, toVersion)
+		return nil
+	}
+
+	err = mgrt.Migrate(toVersion)
+	if err != nil {
+		err = fmt.Errorf("cannot migrate: %s", err)
+		runtime.HandleError(err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) syncDatabase(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -273,6 +376,7 @@ func (c *Controller) syncDatabase(key string) error {
 	var p plugin.DatabasePlugin
 	var s *atlas.DatabaseServer
 	if db.Spec.Server != "" {
+		// XXX this implies the same namespace for database and server. Do we want this?
 		s, err = c.serversLister.DatabaseServers(namespace).Get(db.Spec.Server)
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -589,7 +693,24 @@ func (c *Controller) enqueueDatabaseServer(obj interface{}) {
 }
 
 func (c *Controller) enqueueDatabase(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		return
+	}
+	glog.Infof("enqueue database object: %s", object.GetName())
 	c.enqueue(obj, c.dbQueue)
+}
+
+func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		glog.Info("not enqueue schema object")
+		return
+	}
+	glog.Infof("enqueue schema object: %s", object.GetName())
+	c.enqueue(obj, c.schemaQueue)
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
@@ -610,7 +731,7 @@ func (c *Controller) handleObject(obj interface{}) {
 		}
 		glog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
 	}
-	glog.V(4).Infof("Processing object: %s", object.GetName())
+	glog.Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		if ownerRef.Kind == "DatabaseServer" {
 			s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)

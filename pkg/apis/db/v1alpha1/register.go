@@ -33,6 +33,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&DatabaseServerList{},
 		&Database{},
 		&DatabaseList{},
+		&DatabaseSchema{},
+		&DatabaseSchemaList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

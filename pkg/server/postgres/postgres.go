@@ -53,7 +53,7 @@ func (p *PostgresPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
 // the DatabaseServer resource that 'owns' it.
 func (p *PostgresPlugin) CreatePod(key string, s *atlas.DatabaseServer) *corev1.Pod {
 	labels := map[string]string{
-		"controller": s.Name,
+		"controller":     s.Name,
 		"databaseserver": s.Name,
 	}
 	pod := &corev1.Pod{
@@ -129,7 +129,7 @@ func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
 		return err
 	}
 	// check if it exists; if not create it
-        rows, err := sqldb.Query(`SELECT 1 FROM pg_database WHERE datname=$1`, db.Name)
+	rows, err := sqldb.Query(`SELECT 1 FROM pg_database WHERE datname=$1`, db.Name)
 	if err != nil {
 		return err
 	}

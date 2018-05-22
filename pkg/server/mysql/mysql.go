@@ -54,7 +54,7 @@ func (p *MySQLPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
 // the DatabaseServer resource that 'owns' it.
 func (p *MySQLPlugin) CreatePod(key string, s *atlas.DatabaseServer) *corev1.Pod {
 	labels := map[string]string{
-		"controller": s.Name,
+		"controller":     s.Name,
 		"databaseserver": s.Name,
 	}
 	pod := &corev1.Pod{

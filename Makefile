@@ -10,15 +10,6 @@ SRC = atlas-db-controller
 # Source directory path relative to $GOPATH/src.
 SRCDIR = $(REPO)/$(SRC)
 
-# Output binary name.
-BIN = atlas-db-controller
-
-# Build directory absolute path.
-BINDIR = $(CURDIR)/bin
-
-# Utility docker image to generate Go files from .proto definition.
-# https://github.com/infobloxopen/buildtool
-BUILDTOOL_IMAGE := infoblox/buildtool:v2
 DEFAULT_REGISTRY := infoblox
 REGISTRY ?=$(DEFAULT_REGISTRY)
 
@@ -26,9 +17,6 @@ IMAGE_NAME := $(REGISTRY)/$(APP_NAME):$(VERSION)
 IMAGE_LATEST := $(REGISTRY)/$(APP_NAME):latest
 
 default: build
-
-build: fmt bin
-	GOOS=linux go build -o "$(BINDIR)/$(BIN)" "$(SRCDIR)"
 
 # formats the repo
 fmt:
@@ -39,21 +27,17 @@ deps:
 	@echo "Getting dependencies..."
 	@dep ensure
 
-bin:
-	mkdir -p "$(BINDIR)"
-
 clean:
-	@rm -rf "$(BINDIR)"
-	@rm -rf .glide
+	@docker rmi "$(IMAGE_NAME)"
+	@docker rmi "$(IMAGE_LATEST)"
 
-# --- Docker commands ---
 # Builds the docker image
-image:
-	@docker build -t $(IMAGE_NAME) -f docker/Dockerfile .
+build: deps fmt
+	@docker build --no-cache -t $(IMAGE_NAME) -f Dockerfile .
 	@docker tag $(IMAGE_NAME) $(IMAGE_LATEST)
 
 # Pushes the image to docker
-push: image
+push: build
 	@docker push $(IMAGE_NAME)
 	@docker push $(IMAGE_LATEST)
 

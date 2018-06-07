@@ -29,6 +29,18 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/golang-migrate/migrate"
+  packages = [
+    ".",
+    "database",
+    "database/postgres",
+    "source",
+    "source/github"
+  ]
+  revision = "22f249514de9aa3f8a720a7cabbdd45d294f83a1"
+  version = "v3.2.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/golang/glog"
   packages = ["."]
@@ -136,18 +148,6 @@
     "oid"
   ]
   revision = "d34b9ff171c21ad295489235aec8b6626023cd04"
-
-[[projects]]
-  name = "github.com/mattes/migrate"
-  packages = [
-    ".",
-    "database",
-    "database/postgres",
-    "source",
-    "source/github"
-  ]
-  revision = "035c07716cd373d88456ec4d701402df52584cb4"
-  version = "v3.0.1"
 
 [[projects]]
   name = "github.com/modern-go/concurrent"
@@ -455,6 +455,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3eed459bf06b33878b91b61f693365e01ba04aa58e0d3af1336603397117ef50"
+  inputs-digest = "f3c7028c5c947ffcbac46aed8d26181cfa88e34702421ae1fc587331dbfe6313"
   solver-name = "gps-cdcl"
   solver-version = 1

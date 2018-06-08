@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
-	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
 	"github.com/infobloxopen/atlas-db/pkg/server/mysql"
+	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
 	"github.com/infobloxopen/atlas-db/pkg/server/postgres"
 )
 
@@ -21,13 +21,13 @@ func (p *RDSPlugin) Name() string {
 }
 
 func (p *RDSPlugin) DatabasePlugin() plugin.DatabasePlugin {
-        switch strings.ToLower(p.Engine) {
-        case "mysql":
-                return &mysql.MySQLPlugin{}
-        case "postgres":
-                return &postgres.PostgresPlugin{}
-        }
-        return nil
+	switch strings.ToLower(p.Engine) {
+	case "mysql":
+		return &mysql.MySQLPlugin{}
+	case "postgres":
+		return &postgres.PostgresPlugin{}
+	}
+	return nil
 }
 
 func (p *RDSPlugin) Dsn(su, pw string, s *atlas.DatabaseServer) string {

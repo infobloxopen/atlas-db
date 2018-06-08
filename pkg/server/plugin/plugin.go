@@ -1,8 +1,8 @@
 package plugin
 
 import (
-	"strings"
 	corev1 "k8s.io/api/core/v1"
+	"strings"
 
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 )
@@ -27,7 +27,7 @@ type PodPlugin interface {
 }
 
 type DatabasePlugin interface {
-	SyncDatabase(*atlas.Database,string) error
+	SyncDatabase(*atlas.Database, string) error
 }
 
 func PodImage(image, version, defImage, defVersion string) string {
@@ -58,4 +58,7 @@ func AddMount(c *corev1.Container, name string, ro bool, path string) {
 			ReadOnly:  ro,
 			MountPath: path,
 		})
+}
+
+func GetDsn(d *atlas.Database) {
 }

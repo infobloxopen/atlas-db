@@ -24,9 +24,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/mattes/migrate"
-	_ "github.com/mattes/migrate/database/postgres"
-	_ "github.com/mattes/migrate/source/github"
+	"github.com/golang-migrate/migrate"
+	_ "github.com/golang-migrate/migrate/database/postgres"
+	_ "github.com/golang-migrate/migrate/source/github"
 
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"

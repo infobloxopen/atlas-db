@@ -5,11 +5,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
 	clientset "github.com/infobloxopen/atlas-db/pkg/client/clientset/versioned"
 	informers "github.com/infobloxopen/atlas-db/pkg/client/informers/externalversions"
@@ -17,8 +16,10 @@ import (
 )
 
 var (
-	masterURL  string
-	kubeconfig string
+	labelselector string
+	masterURL     string
+	kubeconfig    string
+	resyncDur     time.Duration
 )
 
 func main() {
@@ -42,8 +43,22 @@ func main() {
 		glog.Fatalf("Error building atlas clientset: %s", err.Error())
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	atlasInformerFactory := informers.NewSharedInformerFactory(atlasClient, time.Second*30)
+	filter := func(o *v1.ListOptions) {
+		o.LabelSelector = labelselector
+	}
+
+	kubeInformerFactory := kubeinformers.NewFilteredSharedInformerFactory(
+		kubeClient,
+		resyncDur,
+		v1.NamespaceAll,
+		filter,
+	)
+	atlasInformerFactory := informers.NewFilteredSharedInformerFactory(
+		atlasClient,
+		resyncDur,
+		v1.NamespaceAll,
+		filter,
+	)
 
 	controller := NewController(kubeClient, atlasClient, kubeInformerFactory, atlasInformerFactory)
 
@@ -56,6 +71,8 @@ func main() {
 }
 
 func init() {
+	flag.DurationVar(&resyncDur, "resync", time.Minute*5, "Resync duration")
+	flag.StringVar(&labelselector, "l", "", "Filter all resources by this label selector.")
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 }

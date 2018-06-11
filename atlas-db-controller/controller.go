@@ -61,6 +61,8 @@ const (
 	StateUpdating = "Updating"
 )
 
+var schemaStatusMsg string
+
 // Controller is the controller implementation for DatabaseServer resources
 type Controller struct {
 	kubeclientset  kubernetes.Interface
@@ -295,7 +297,9 @@ func (c *Controller) syncSchema(key string) error {
 	dbName := schema.Spec.Database
 	db, err := c.dbsLister.Databases(namespace).Get(dbName)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("cannot get database `%s`: %s", dbName, err))
+        schemaStatusMsg = fmt.Sprintf("cannot get database `%s`: %s", dbName, err)
+        c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 		return err
 	}
 
@@ -303,14 +307,18 @@ func (c *Controller) syncSchema(key string) error {
 	glog.Info(db.Spec.Dsn)
 
 	if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
-		err = fmt.Errorf("unsupported database server type `%s`", db.Spec.ServerType)
+		schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`", db.Spec.ServerType)
+		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
 
 	mgrt, err := migrate.New(schema.Spec.Git, db.Spec.Dsn)
 	if err != nil {
-		err = fmt.Errorf("cannot create migrate: %s", err)
+		schemaStatusMsg = fmt.Sprintf("cannot create migrate: %s", err)
+		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
@@ -320,31 +328,71 @@ func (c *Controller) syncSchema(key string) error {
 	if err != nil {
 		if err == migrate.ErrNilVersion {
 			glog.Infof("database `%s` has no migration applied", dbName)
+			schemaStatusMsg = fmt.Sprintf("database `%s` has no migration applied", dbName)
+			c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
 		} else {
-			err = fmt.Errorf("cannot get current database version: %s", err)
+			schemaStatusMsg = fmt.Sprintf("cannot get current database version: %s", err)
+			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+			err = fmt.Errorf(schemaStatusMsg)
 			runtime.HandleError(err)
 			return err
 		}
 	}
 	if dirt {
 		// TODO we might want to notficate someone about this
-		err = fmt.Errorf("database `%s` (%s) is in dirty state (version is %d)", dbName, db.Spec.Dsn, ver)
+		schemaStatusMsg = fmt.Sprintf("database `%s` (%s) is in dirty state (version is %d)", dbName, db.Spec.Dsn, ver)
+		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
 	toVersion := uint(schema.Spec.Version)
 	if ver == toVersion {
 		glog.Infof("database `%s` has synced version %d", dbName, toVersion)
+		schemaStatusMsg = fmt.Sprintf("database `%s` has synced version %d", dbName, toVersion)
+		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
 		return nil
 	}
 
 	err = mgrt.Migrate(toVersion)
 	if err != nil {
-		err = fmt.Errorf("cannot migrate: %s", err)
+		schemaStatusMsg = fmt.Sprintf("cannot migrate: %s", err)
+		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
+
+	schemaStatusMsg := fmt.Sprintf("Successfully synced schema '%s'", key)
+	schema, err = c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
+
+	if err != nil {
+		runtime.HandleError(err)
+		return err
+	}
+
 	return nil
+}
+
+func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.DatabaseSchema, state, msg string) (*atlas.DatabaseSchema, error) {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+	schemaCopy := schema.DeepCopy()
+	schemaCopy.Status.State = state
+	schemaCopy.Status.Message = msg
+	// Until #38113 is merged, we must use Update instead of UpdateStatus to
+	// update the Status block of the resource. UpdateStatus will not
+	// allow changes to the Spec of the resource, which is ideal for ensuring
+	// nothing other than resource status has been updated.
+
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).Update(schemaCopy)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database schema '%s': %s", state, key, err))
+		return schema, err
+	}
+	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus
+	return c.schemasLister.DatabaseSchemas(schema.Namespace).Get(schema.Name)
 }
 
 func (c *Controller) syncDatabase(key string) error {

@@ -27,7 +27,8 @@ type DatabaseSchemaSpec struct {
 
 // DatabaseSchemaStatus is the status for a DatabaseSchema resource
 type DatabaseSchemaStatus struct {
-	URL string `json:"url"`
+	State   string `json:"state"`
+	Message string `json:"message"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

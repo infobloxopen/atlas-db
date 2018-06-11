@@ -297,8 +297,8 @@ func (c *Controller) syncSchema(key string) error {
 	dbName := schema.Spec.Database
 	db, err := c.dbsLister.Databases(namespace).Get(dbName)
 	if err != nil {
-        schemaStatusMsg = fmt.Sprintf("cannot get database `%s`: %s", dbName, err)
-        c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+		schemaStatusMsg = fmt.Sprintf("cannot get database `%s`: %s", dbName, err)
+		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 		return err
 	}

@@ -1,36 +1,38 @@
-VERSION := $(shell git describe --dirty=-dirty --always)
-
-APP_NAME := atlas-db
-
 # Absolute github repository name.
-REPO := github.com/infobloxopen/atlas-db
-
-SRC = atlas-db-controller
-
-# Source directory path relative to $GOPATH/src.
-SRCDIR = $(REPO)/$(SRC)
-
-# Output binary name.
-BIN = atlas-db-controller
-
-# Build directory absolute path.
-BINDIR = $(CURDIR)/bin
+REPO              := github.com/infobloxopen/atlas-db
 
 # Utility docker image to generate Go files from .proto definition.
 # https://github.com/infobloxopen/buildtool
-BUILDTOOL_IMAGE := infoblox/buildtool:v2
-DEFAULT_REGISTRY := infoblox
-REGISTRY ?=$(DEFAULT_REGISTRY)
+BUILDTOOL_IMAGE   := infoblox/buildtool:v2
 
-IMAGE_NAME := $(REGISTRY)/$(APP_NAME):$(VERSION)
-IMAGE_LATEST := $(REGISTRY)/$(APP_NAME):latest
+# configuration for image
+APP_NAME          := atlas-db
+DEFAULT_REGISTRY  := infoblox
+REGISTRY          ?=$(DEFAULT_REGISTRY)
+VERSION           := $(shell git describe --dirty=-dirty --always)
+IMAGE_NAME        := $(REGISTRY)/$(APP_NAME):$(VERSION)
+IMAGE_LATEST      := $(REGISTRY)/$(APP_NAME):latest
 
+# configuration for source
+SRC               = atlas-db-controller
+SRCDIR            = $(REPO)/$(SRC)
+
+# configuration for output
+BIN               = atlas-db-controller
+BINDIR            = $(CURDIR)/bin
+
+# configuration for building
+GO_TEST_FLAGS     ?= -v -cover
+# TEMPORARY FIX
+IGNORE_FAKE       := grep -v fake
+GO_PACKAGES       := $(shell go list ./... | grep -v vendor | $(IGNORE_FAKE))
+
+.PHONY: default
 default: build
 
 build: fmt bin
 	GOOS=linux go build -o "$(BINDIR)/$(BIN)" "$(SRCDIR)"
 
-# formats the repo
 fmt:
 	@echo "Running 'go fmt ...'"
 	@go fmt -x "$(REPO)/..."
@@ -58,17 +60,13 @@ push: image
 	@docker push $(IMAGE_LATEST)
 
 # Runs the tests
-test:
-	echo "" > coverage.txt
-	for d in `go list ./... | grep -v vendor`; do \
-                t=$$(date +%s); \
-                go test -v -coverprofile=cover.out -covermode=atomic $$d || exit 1; \
-                echo "Coverage test $$d took $$(($$(date +%s)-t)) seconds"; \
-                if [ -f cover.out ]; then \
-                        cat cover.out >> coverage.txt; \
-                        rm cover.out; \
-                fi; \
-        done
+test: check-fmt
+	@echo "Running test cases..."
+	@go test $(GO_TEST_FLAGS) $(GO_PACKAGES)
+
+check-fmt:
+	@echo "Checking go formatting..."
+	@test -z `go fmt $(GO_PACKAGES)`
 
 # --- Kuberenetes deployment ---
 # Deploy the service in kubernetes

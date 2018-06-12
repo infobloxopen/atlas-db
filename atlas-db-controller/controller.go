@@ -297,7 +297,7 @@ func (c *Controller) syncSchema(key string) error {
 	dbName := schema.Spec.Database
 	db, err := c.dbsLister.Databases(namespace).Get(dbName)
 	if err != nil {
-		schemaStatusMsg = fmt.Sprintf("cannot get database `%s`: %s", dbName, err)
+		schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 		return err
@@ -307,7 +307,7 @@ func (c *Controller) syncSchema(key string) error {
 	glog.Info(db.Spec.Dsn)
 
 	if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
-		schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`", db.Spec.ServerType)
+		schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`, the supported database is postgres", db.Spec.ServerType)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
@@ -316,7 +316,7 @@ func (c *Controller) syncSchema(key string) error {
 
 	mgrt, err := migrate.New(schema.Spec.Git, db.Spec.Dsn)
 	if err != nil {
-		schemaStatusMsg = fmt.Sprintf("cannot create migrate: %s", err)
+		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
@@ -356,7 +356,7 @@ func (c *Controller) syncSchema(key string) error {
 
 	err = mgrt.Migrate(toVersion)
 	if err != nil {
-		schemaStatusMsg = fmt.Sprintf("cannot migrate: %s", err)
+		schemaStatusMsg = fmt.Sprintf("cannot migrate the db %s : %s", dbName, err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)

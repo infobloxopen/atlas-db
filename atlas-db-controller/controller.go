@@ -298,28 +298,60 @@ func (c *Controller) syncSchema(key string) error {
 		}
 		return err
 	}
-	glog.Info(schema.Spec)
+	glog.V(4).Infof("Schema Spec: %v", schema.Spec)
+
+	// If dsn/dsnFrom is passed in the schema spec consider as override and don't go through database spec
+	dsn := schema.Spec.Dsn
 	dbName := schema.Spec.Database
-	db, err := c.dbsLister.Databases(namespace).Get(dbName)
-	if err != nil {
-		schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
-		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-		runtime.HandleError(fmt.Errorf(schemaStatusMsg))
-		return err
+	if dsn == "" {
+		if schema.Spec.DsnFrom != nil {
+			secretName := schema.Spec.DsnFrom.SecretKeyRef.Name
+			dsn, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.DsnFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get DSN for schema `%s` from secret `%s`", key, secretName)
+					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("failed to get valid DSN for schema `%s` from secret `%s`", key, secretName)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
+		} else { // Get the dsn from database created secret
+			db, err := c.dbsLister.Databases(namespace).Get(dbName)
+			if err != nil {
+				schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
+				return err
+			}
+
+			glog.V(4).Infof("Server type requested: %s", db.Spec.ServerType)
+			if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
+				schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`, the supported database is postgres", db.Spec.ServerType)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+				err = fmt.Errorf(schemaStatusMsg)
+				runtime.HandleError(err)
+				return err
+			}
+
+			dsn, err = c.getSecretByName(db.Namespace, "dsn", dbName)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get DSN for schema `%s` from secret `%s`", key, dbName)
+					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("failed to get valid DSN for schema `%s` from secret `%s`", key, dbName)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
+		}
 	}
 
-	glog.Info(db.Spec.ServerType)
-	glog.Info(db.Spec.Dsn)
-
-	if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
-		schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`, the supported database is postgres", db.Spec.ServerType)
-		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-		err = fmt.Errorf(schemaStatusMsg)
-		runtime.HandleError(err)
-		return err
-	}
-
-	mgrt, err := migrate.New(schema.Spec.Git, db.Spec.Dsn)
+	mgrt, err := migrate.New(schema.Spec.Git, dsn)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
@@ -345,7 +377,7 @@ func (c *Controller) syncSchema(key string) error {
 	}
 	if dirt {
 		// TODO we might want to notficate someone about this
-		schemaStatusMsg = fmt.Sprintf("database `%s` (%s) is in dirty state (version is %d)", dbName, db.Spec.Dsn, ver)
+		schemaStatusMsg = fmt.Sprintf("database `%s` (%s) is in dirty state (version is %d)", dbName, dsn, ver)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
@@ -400,17 +432,24 @@ func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.Databa
 	return c.schemasLister.DatabaseSchemas(schema.Namespace).Get(schema.Name)
 }
 
-func (c *Controller) getSecret(secretKey, namespace, secretName string, from *atlas.ValueSource) (string, error) {
-	if from == nil && secretName != "" {
-		from = &atlas.ValueSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: secretName,
-				},
-				Key: secretKey,
-			},
-		}
+func (c *Controller) getSecretByName(namespace, secretKey, secretName string) (string, error) {
+	if secretKey == "" || secretName == "" {
+		return "", fmt.Errorf("no valid secretName or secretKey")
 	}
+
+	from := &atlas.ValueSource{
+		SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{
+				Name: secretName,
+			},
+			Key: secretKey,
+		},
+	}
+
+	return c.getSecretFromValueSource(namespace, from)
+}
+
+func (c *Controller) getSecretFromValueSource(namespace string, from *atlas.ValueSource) (string, error) {
 	if from == nil {
 		return "", fmt.Errorf("no valid secret value or source")
 	}
@@ -445,8 +484,9 @@ func (c *Controller) syncDatabase(key string) error {
 
 	var p plugin.DatabasePlugin
 	var s *atlas.DatabaseServer
+
 	if db.Spec.Server != "" {
-		// XXX this implies the same namespace for database and server. Do we want this?
+		// TODO this implies the same namespace for database and server. Do we want this?
 		s, err = c.serversLister.DatabaseServers(namespace).Get(db.Spec.Server)
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -455,7 +495,6 @@ func (c *Controller) syncDatabase(key string) error {
 			} else {
 				runtime.HandleError(fmt.Errorf("error retrieving database server '%s' for database '%s': %s", db.Spec.Server, key, err))
 			}
-
 			// requeue
 			return err
 		}
@@ -482,19 +521,36 @@ func (c *Controller) syncDatabase(key string) error {
 		return nil
 	}
 
+	// If dsn/dsnFrom is passed in the database spec consider as override and don't go through database spec
 	dsn := db.Spec.Dsn
 	if dsn == "" {
-		dsn, err = c.getSecret("dsn", db.Namespace, s.Name, db.Spec.DsnFrom)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				msg := "waiting for secret or configmap for DSN"
-				c.updateDatabaseStatus(key, db, StatePending, msg)
-				return err
+		if db.Spec.DsnFrom != nil {
+			secretName := db.Spec.DsnFrom.SecretKeyRef.Name
+			dsn, err = c.getSecretFromValueSource(db.Namespace, db.Spec.DsnFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get DSN for database `%s` from secret `%s`", key, secretName)
+					c.updateDatabaseStatus(key, db, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("failed to get valid DSN for database `%s` from secret `%s`", key, secretName)
+				c.updateDatabaseStatus(key, db, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
 			}
-			msg := fmt.Sprintf("database '%s' has no valid DSN or source", key)
-			c.updateDatabaseStatus(key, db, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
-			return nil
+		} else { // Get the dsn with superuser info from database server created secret
+			dsn, err = c.getSecretByName(db.Namespace, "dsn", s.Name)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get DSN for database `%s` from secret `%s`", key, s.Name)
+					c.updateDatabaseStatus(key, db, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("failed to get valid DSN for database `%s` from secret `%s`", key, s.Name)
+				c.updateDatabaseStatus(key, db, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
 		}
 	}
 
@@ -503,6 +559,16 @@ func (c *Controller) syncDatabase(key string) error {
 		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
+		return err
+	}
+
+	// Update dsn related to a database which databaseschema will use.
+	err = c.syncDatabaseSecret(key, db, s)
+	if err != nil {
+		msg := fmt.Sprintf("error syncing database secrets '%s': %s", key, err)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
+		// TODO: question should return error or nil.
 		return err
 	}
 
@@ -515,6 +581,65 @@ func (c *Controller) syncDatabase(key string) error {
 
 	//TODO: Log some more events for troubleshoting
 	c.recorder.Event(db, corev1.EventTypeNormal, SuccessSynced, MessageDatabaseSynced)
+	return nil
+}
+
+func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver *atlas.DatabaseServer) error {
+	if db.Spec.Users == nil {
+		glog.V(4).Info(" Database users not provided. Skip database secret creation")
+		return nil
+	}
+	secret, err := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
+
+	//TODO: check if the secret matches the spec and change it if not
+	//this will require additional support from the database plugin
+
+	// If the resource doesn't exist, we'll create it.
+	// TODO: creating dsn for admin user alone for now. non-admin users also we should create.
+	if errors.IsNotFound(err) {
+		glog.V(4).Info("Database secrets not found. Creating...")
+		for _, user := range db.Spec.Users {
+			passwd := user.Password
+			if user.Role == "admin" {
+				if passwd == "" {
+					passwd, err = c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
+					if err != nil {
+						if errors.IsNotFound(err) {
+							msg := fmt.Sprintf("waiting for secret or configmap for %s", user.Name)
+							c.updateDatabaseStatus(key, db, StatePending, msg)
+							return err
+						}
+					}
+				}
+				dsn := server.ActivePlugin(dbserver).Dsn(user.Name, passwd, db, dbserver)
+				secret, err = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(
+					&corev1.Secret{
+						ObjectMeta: c.objMeta(db, "Secret"),
+						StringData: map[string]string{"dsn": dsn},
+					},
+				)
+
+			}
+		}
+	}
+	// If an error occurs during Get/Create, we'll requeue the item so we can
+	// attempt processing again later. This could have been caused by a
+	// temporary network failure, or any other transient reason.
+	if err != nil {
+		return err
+	}
+
+	// If it is not controlled by this Database resource, we should log
+	// a warning to the event recorder and ret
+	if !metav1.IsControlledBy(secret, db) {
+		msg := fmt.Sprintf(MessageSecretExists, secret.Name)
+		c.recorder.Event(dbserver, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
+	// TODO: compare existing to spec and reconcile
+
+	// TODO: Update status
 	return nil
 }
 
@@ -581,7 +706,7 @@ func (c *Controller) syncServer(key string) error {
 		return err
 	}
 
-	err = c.syncSecret(key, s)
+	err = c.syncServerSecret(key, s)
 	if err != nil {
 		return err
 	}
@@ -597,7 +722,7 @@ func (c *Controller) syncServer(key string) error {
 	return nil
 }
 
-func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
+func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error {
 	// Creates a secret with the same name as the server. TODO: maybe we should allow different?
 	secret, err := c.secretsLister.Secrets(s.Namespace).Get(s.Name)
 
@@ -606,9 +731,10 @@ func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
 
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
+		glog.V(4).Info("Database Server secrets not found. Creating...")
 		su := s.Spec.SuperUser
 		if su == "" {
-			su, err = c.getSecret("superUser", s.Namespace, s.Name, s.Spec.SuperUserFrom)
+			su, err = c.getSecretFromValueSource(s.Namespace, s.Spec.SuperUserFrom)
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := "waiting for secret or configmap for superUser"
@@ -624,7 +750,7 @@ func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
 
 		supw := s.Spec.SuperUserPassword
 		if supw == "" {
-			supw, err = c.getSecret("superUserPassword", s.Namespace, s.Name, s.Spec.SuperUserPasswordFrom)
+			supw, err = c.getSecretFromValueSource(s.Namespace, s.Spec.SuperUserPasswordFrom)
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := "waiting for secret or configmap for superUserPassword"
@@ -638,10 +764,10 @@ func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
 			}
 		}
 
-		dsn := server.ActivePlugin(s).Dsn(su, supw, s)
+		dsn := server.ActivePlugin(s).Dsn(su, supw, nil, s)
 		secret, err = c.kubeclientset.CoreV1().Secrets(s.Namespace).Create(
 			&corev1.Secret{
-				ObjectMeta: c.objMeta(s, "DatabaseServer"),
+				ObjectMeta: c.objMeta(s, "Secret"),
 				StringData: map[string]string{"dsn": dsn},
 			},
 		)

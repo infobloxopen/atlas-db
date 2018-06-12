@@ -40,13 +40,13 @@ func (p *MySQLPlugin) DatabasePlugin() plugin.DatabasePlugin {
 	return p
 }
 
-func (p *MySQLPlugin) Dsn(su, pw string, s *atlas.DatabaseServer) string {
+func (p *MySQLPlugin) Dsn(userName string, password string, db *atlas.Database, s *atlas.DatabaseServer) string {
 	return fmt.Sprintf("%s:%s@tcp(%s.%s:%d)/mysql?charset=utf8&parseTime=True",
-		su,
-		pw,
+		userName,
+		password,
 		s.Name,
 		s.Namespace,
-		s.Spec.Port)
+		s.Spec.ServicePort)
 }
 
 // CreatePod creates a new Pod for a DatabaseServer resource. It also sets
@@ -87,7 +87,7 @@ func (p *MySQLPlugin) CreatePod(key string, s *atlas.DatabaseServer) *corev1.Pod
 						{
 							Name:          portName,
 							Protocol:      "TCP",
-							ContainerPort: plugin.PodContainerPort(s.Spec.Port, defaultPort),
+							ContainerPort: plugin.PodContainerPort(s.Spec.ServicePort, defaultPort),
 						},
 					},
 				},

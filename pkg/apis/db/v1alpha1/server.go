@@ -26,8 +26,8 @@ type DatabaseServerSpec struct {
 	SuperUserFrom         *ValueSource    `json:"superUserFrom"`
 	SuperUserPassword     string          `json:"superUserPassword"`
 	SuperUserPasswordFrom *ValueSource    `json:"superUserPasswordFrom"`
+	Host                  string          `json:"host"`
 	ServicePort           int32           `json:"servicePort"`
-	Port                  int32           `john:"port"`
 }
 
 // DatabaseServerPlugin represents the type and method used

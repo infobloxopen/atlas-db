@@ -39,13 +39,32 @@ func (p *PostgresPlugin) DatabasePlugin() plugin.DatabasePlugin {
 	return p
 }
 
-func (p *PostgresPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
-	return fmt.Sprintf("%s:%s@%s.%s:%d/postgres?sslmode=disable",
-		s.Spec.SuperUser,
-		pw,
-		s.Name,
-		s.Namespace,
-		s.Spec.Port)
+func (p *PostgresPlugin) Dsn(userName string, password string, db *atlas.Database, s *atlas.DatabaseServer) string {
+	if userName == "" {
+		userName = s.Spec.SuperUser
+	}
+	if password == "" {
+		password = s.Spec.SuperUserPassword
+	}
+
+	dbHost := fmt.Sprintf("%s.%s", s.Name, s.Namespace)
+	if s.Spec.Host != "" {
+		dbHost = s.Spec.Host
+	}
+
+	// For superuser DSN creation database name will not be passed &
+	// for admin DSN creation database name will be passed
+	database := "postgres"
+	if db != nil {
+		database = db.Name
+	}
+
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		userName,
+		password,
+		dbHost,
+		s.Spec.ServicePort,
+		database)
 }
 
 // CreatePod creates a new Pod for a DatabaseServer resource. It also sets
@@ -86,7 +105,7 @@ func (p *PostgresPlugin) CreatePod(key string, s *atlas.DatabaseServer) *corev1.
 						{
 							Name:          portName,
 							Protocol:      "TCP",
-							ContainerPort: plugin.PodContainerPort(s.Spec.Port, defaultPort),
+							ContainerPort: plugin.PodContainerPort(s.Spec.ServicePort, defaultPort),
 						},
 					},
 				},
@@ -125,11 +144,13 @@ func (p *PostgresPlugin) DiffPod(key string, s *atlas.DatabaseServer, pod *corev
 func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
 	// connect
 	sqldb, err := sql.Open("postgres", dsn)
+	defer sqldb.Close()
 	if err != nil {
 		return err
 	}
 	// check if it exists; if not create it
 	rows, err := sqldb.Query(`SELECT 1 FROM pg_database WHERE datname=$1`, db.Name)
+	defer rows.Close()
 	if err != nil {
 		return err
 	}

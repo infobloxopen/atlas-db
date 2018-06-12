@@ -11,7 +11,7 @@ import (
 type Plugin interface {
 	Name() string
 	DatabasePlugin() DatabasePlugin
-	Dsn(string, string, *atlas.DatabaseServer) string
+	Dsn(string, string, *atlas.Database, *atlas.DatabaseServer) string
 }
 
 // CloudPlugin is for instances created by an IaaS platform

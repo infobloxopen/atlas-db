@@ -30,7 +30,7 @@ func (p *RDSPlugin) DatabasePlugin() plugin.DatabasePlugin {
 	return nil
 }
 
-func (p *RDSPlugin) Dsn(su, pw string, s *atlas.DatabaseServer) string {
+func (p *RDSPlugin) Dsn(userName string, password string, db *atlas.Database, s *atlas.DatabaseServer) string {
 	return ""
 }
 

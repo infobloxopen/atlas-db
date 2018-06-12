@@ -48,6 +48,7 @@ const (
 	ErrResourceExists = "ErrResourceExists"
 
 	MessageServiceExists  = "Service %q already exists and is not managed by DatabaseServer"
+	MessageSecretExists   = "Secret %q already exists and is not managed by DatabaseServer"
 	MessagePodExists      = "Pod %q already exists and is not managed by DatabaseServer"
 	MessageServerSynced   = "DatabaseServer synced successfully"
 	MessageDatabaseSynced = "Database synced successfully"
@@ -70,6 +71,8 @@ type Controller struct {
 
 	podsLister     corelisters.PodLister
 	podsSynced     cache.InformerSynced
+	secretsLister  corelisters.SecretLister
+	secretsSynced  cache.InformerSynced
 	servicesLister corelisters.ServiceLister
 	servicesSynced cache.InformerSynced
 	serversLister  listers.DatabaseServerLister
@@ -95,8 +98,8 @@ func NewController(
 	kubeInformerFactory kubeinformers.SharedInformerFactory,
 	atlasInformerFactory informers.SharedInformerFactory) *Controller {
 
-	// obtain references to shared index informers for Secrets and PVCs
-	//secretsInformer := kubeInformerFactory.Apps().V1().Secrets()
+	// obtain references to shared index informers for Secrets
+	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	serverInformer := atlasInformerFactory.Atlasdb().V1alpha1().DatabaseServers()
@@ -118,6 +121,8 @@ func NewController(
 		atlasclientset: atlasclientset,
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
+		secretsLister:  secretInformer.Lister(),
+		secretsSynced:  secretInformer.Informer().HasSynced,
 		servicesLister: serviceInformer.Lister(),
 		servicesSynced: serviceInformer.Informer().HasSynced,
 		serversLister:  serverInformer.Lister(),
@@ -160,6 +165,7 @@ func NewController(
 	objInformers := []cache.SharedInformer{
 		podInformer.Informer(),
 		serviceInformer.Informer(),
+		secretInformer.Informer(),
 	}
 	for _, inf := range objInformers {
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -196,7 +202,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.schemasSynced, c.servicesSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.schemasSynced, c.servicesSynced, c.secretsSynced); !ok {
 		// XXX actually, this is not error. the error is when we cannot start workers due to `cache is not ready` after certain timeout
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
@@ -272,6 +278,23 @@ func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, sync
 	}
 
 	return true
+}
+
+func (c *Controller) getSecret(secretKey, namespace, secretName string, from *atlas.ValueSource) (string, error) {
+	if from == nil && secretName != "" {
+		from = &atlas.ValueSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key: secretKey,
+			},
+		}
+	}
+	if from == nil {
+		return "", fmt.Errorf("no valid secret value or source")
+	}
+	return from.Resolve(c.kubeclientset, namespace)
 }
 
 func (c *Controller) syncSchema(key string) error {
@@ -462,24 +485,7 @@ func (c *Controller) syncDatabase(key string) error {
 
 	dsn := db.Spec.Dsn
 	if dsn == "" {
-		dsnFrom := db.Spec.DsnFrom
-		if dsnFrom == nil && s != nil {
-			dsnFrom = &atlas.ValueSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: s.Name,
-					},
-					Key: "dsn",
-				},
-			}
-		}
-		if dsnFrom == nil {
-			msg := fmt.Sprintf("database '%s' has no valid DSN or source", key)
-			c.updateDatabaseStatus(key, db, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
-			return nil
-		}
-		dsn, err = dsnFrom.Resolve(c.kubeclientset, db.Namespace)
+		dsn, err = c.getSecret("dsn", db.Namespace, s.Name, db.Spec.DsnFrom)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				msg := "waiting for secret or configmap for DSN"
@@ -593,7 +599,73 @@ func (c *Controller) syncServer(key string) error {
 }
 
 func (c *Controller) syncSecret(key string, s *atlas.DatabaseServer) error {
-	//TODO: Create the secret here
+	// Creates a secret with the same name as the server. TODO: maybe we should allow different?
+	secret, err := c.secretsLister.Secrets(s.Namespace).Get(s.Name)
+
+	//TODO: check if the secret matches the spec and change it if not
+	// this will require additional support from the database plugin
+
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		su := s.Spec.SuperUser
+		if su == "" {
+			su, err = c.getSecret("superUser", s.Namespace, s.Name, s.Spec.SuperUserFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := "waiting for secret or configmap for superUser"
+					c.updateDatabaseServerStatus(key, s, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("databaseserver '%s' has no valid superUser or source", key)
+				c.updateDatabaseServerStatus(key, s, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
+		}
+
+		supw := s.Spec.SuperUserPassword
+		if supw == "" {
+			supw, err = c.getSecret("superUserPassword", s.Namespace, s.Name, s.Spec.SuperUserPasswordFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := "waiting for secret or configmap for superUserPassword"
+					c.updateDatabaseServerStatus(key, s, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("databaseserver '%s' has no valid superUserPassword or source", key)
+				c.updateDatabaseServerStatus(key, s, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
+		}
+
+		dsn := server.ActivePlugin(s).Dsn(su, supw, s)
+		secret, err = c.kubeclientset.CoreV1().Secrets(s.Namespace).Create(
+			&corev1.Secret{
+				ObjectMeta: c.objMeta(s, "DatabaseServer"),
+				StringData: map[string]string{"dsn": dsn},
+			},
+		)
+	}
+
+	// If an error occurs during Get/Create, we'll requeue the item so we can
+	// attempt processing again later. This could have been caused by a
+	// temporary network failure, or any other transient reason.
+	if err != nil {
+		return err
+	}
+
+	// If it is not controlled by this DatabaseServer resource, we should log
+	// a warning to the event recorder and ret
+	if !metav1.IsControlledBy(secret, s) {
+		msg := fmt.Sprintf(MessageSecretExists, secret.Name)
+		c.recorder.Event(s, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
+	// TODO: compare existing to spec and reconcile
+
+	// TODO: Update status
 	return nil
 }
 
@@ -703,7 +775,7 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 
 	// Finally, we update the status block of the DatabaseServer resource to reflect the
 	// current state of the world
-	err = c.updateDatabaseServerStatus(s, pod)
+	s, err = c.updateDatabaseServerStatus(key, s, StateSuccess, "Successfully synced")
 	if err != nil {
 		return err
 	}
@@ -712,18 +784,21 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 	return nil
 }
 
-func (c *Controller) updateDatabaseServerStatus(s *atlas.DatabaseServer, pod *corev1.Pod) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-	serverCopy := s.DeepCopy()
-	//serverCopy.Status.AvailableReplicas = pod.Status.AvailableReplicas
+func (c *Controller) updateDatabaseServerStatus(key string, s *atlas.DatabaseServer, state, msg string) (*atlas.DatabaseServer, error) {
+	copy := s.DeepCopy()
+	copy.Status.State = state
+	copy.Status.Message = msg
 	// Until #38113 is merged, we must use Update instead of UpdateStatus to
-	// update the Status block of the DatabaseServer resource. UpdateStatus will not
+	// update the Status block of the resource. UpdateStatus will not
 	// allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).Update(serverCopy)
-	return err
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).Update(copy)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database server '%s': %s", state, key, err))
+		return s, err
+	}
+	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus
+	return c.serversLister.DatabaseServers(s.Namespace).Get(s.Name)
 }
 
 func (c *Controller) enqueue(obj interface{}, q workqueue.RateLimitingInterface) {

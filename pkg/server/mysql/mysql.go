@@ -40,9 +40,9 @@ func (p *MySQLPlugin) DatabasePlugin() plugin.DatabasePlugin {
 	return p
 }
 
-func (p *MySQLPlugin) Dsn(pw string, s *atlas.DatabaseServer) string {
+func (p *MySQLPlugin) Dsn(su, pw string, s *atlas.DatabaseServer) string {
 	return fmt.Sprintf("%s:%s@tcp(%s.%s:%d)/mysql?charset=utf8&parseTime=True",
-		s.Spec.SuperUser,
+		su,
 		pw,
 		s.Name,
 		s.Namespace,

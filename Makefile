@@ -1,21 +1,24 @@
-VERSION := $(shell git describe --dirty=-dirty --always)
+REPO              := github.com/infobloxopen/atlas-db
 
-APP_NAME := atlas-db
+# configuration for image
+APP_NAME          := atlas-db
+DEFAULT_REGISTRY  := infoblox
+REGISTRY          ?=$(DEFAULT_REGISTRY)
+VERSION           := $(shell git describe --dirty=-dirty --always)
+IMAGE_NAME        := $(REGISTRY)/$(APP_NAME):$(VERSION)
+IMAGE_LATEST      := $(REGISTRY)/$(APP_NAME):latest
 
-# Absolute github repository name.
-REPO := github.com/infobloxopen/atlas-db
+# configuration for source
+SRC               = atlas-db-controller
+SRCDIR            = $(REPO)/$(SRC)
 
-SRC = atlas-db-controller
+# configuration for building
+GO_TEST_FLAGS     ?= -v -cover
+# TEMPORARY FIX
+IGNORE_FAKE       := grep -v fake
+GO_PACKAGES       := $(shell go list ./... | grep -v vendor | $(IGNORE_FAKE))
 
-# Source directory path relative to $GOPATH/src.
-SRCDIR = $(REPO)/$(SRC)
-
-DEFAULT_REGISTRY := infoblox
-REGISTRY ?=$(DEFAULT_REGISTRY)
-
-IMAGE_NAME := $(REGISTRY)/$(APP_NAME):$(VERSION)
-IMAGE_LATEST := $(REGISTRY)/$(APP_NAME):latest
-
+.PHONY: default
 default: build
 
 # formats the repo
@@ -42,17 +45,13 @@ push: build
 	@docker push $(IMAGE_LATEST)
 
 # Runs the tests
-test:
-	echo "" > coverage.txt
-	for d in `go list ./... | grep -v vendor`; do \
-                t=$$(date +%s); \
-                go test -v -coverprofile=cover.out -covermode=atomic $$d || exit 1; \
-                echo "Coverage test $$d took $$(($$(date +%s)-t)) seconds"; \
-                if [ -f cover.out ]; then \
-                        cat cover.out >> coverage.txt; \
-                        rm cover.out; \
-                fi; \
-        done
+test: check-fmt
+	@echo "Running test cases..."
+	@go test $(GO_TEST_FLAGS) $(GO_PACKAGES)
+
+check-fmt:
+	@echo "Checking go formatting..."
+	@test -z `go fmt $(GO_PACKAGES)`
 
 # --- Kuberenetes deployment ---
 # Deploy the service in kubernetes

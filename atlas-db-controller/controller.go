@@ -351,7 +351,34 @@ func (c *Controller) syncSchema(key string) error {
 		}
 	}
 
-	mgrt, err := migrate.New(schema.Spec.Git, dsn)
+	// Formulate gitURL from either git string or secret provided
+	gitURL := schema.Spec.Git
+	if gitURL == "" {
+		if schema.Spec.GitFrom != nil {
+			secretName := schema.Spec.GitFrom.SecretKeyRef.Name
+			gitURL, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.GitFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get gitURL for schema `%s` from secret `%s`", key, secretName)
+					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
+					return err
+				}
+				msg := fmt.Sprintf("failed to get valid gitURL for schema `%s` from secret `%s`", key, secretName)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return nil
+			}
+
+		} else {
+			msg := fmt.Sprintf("failed to get valid gitURL for schema `%s`", key)
+			c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+			err = fmt.Errorf(msg)
+			runtime.HandleError(err)
+			return err
+		}
+	}
+
+	mgrt, err := migrate.New(gitURL, dsn)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)

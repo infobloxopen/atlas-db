@@ -57,12 +57,9 @@ spec:
         spec:
           required:
             - database
-            - git
             - version
           properties:
             database:
-              type: string
-            git:
               type: string
             version:
               type: integer

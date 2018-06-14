@@ -19,10 +19,11 @@ type DatabaseSchema struct {
 
 // DatabaseSchemaSpec is the spec for a DatabaseSchema resource
 type DatabaseSchemaSpec struct {
-	Database string `json:"database"`
-	// DatabaseSpec
-	Git     string `json:"git"` // github://user:personal-access-token@owner/repo/path
-	Version int    `json:"version"`
+	Database string       `json:"database"`
+	Dsn      string       `json:"dsn"`
+	DsnFrom  *ValueSource `json:"dsnFrom"`
+	Git      string       `json:"git"`     // github://user:personal-access-token@owner/repo/path
+	Version  int          `json:"version"` // version of database schema
 }
 
 // DatabaseSchemaStatus is the status for a DatabaseSchema resource

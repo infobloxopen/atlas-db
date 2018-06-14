@@ -1,9 +1,10 @@
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: DatabaseServer
 metadata:
-  name: postgres
+  name: mydbserver
 spec:
   servicePort: 5432
+  superUser: "postgres"
   superUserPassword: "postgres"
   postgres:
     image: postgres
@@ -11,7 +12,7 @@ spec:
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: Database
 metadata:
-  name: mydb
+  name: myappdb
 spec:
   users:
   - name: me
@@ -21,14 +22,13 @@ spec:
     password: bar
     role: read
   serverType: postgres
-  dsn: "postgres://postgres:postgres@postgres.default:5432/postgres?sslmode=disable"
-#  server: postgres
+  server: mydbserver
 ---
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: DatabaseSchema
 metadata:
-  name: myappdb
+  name: myappschema
 spec:
-  database: mydb
-  git: github.com/infobloxopen/atlas-contacts-app/migrations
+  database: myappdb
+  git: github://iburak-infoblox:<place password or oauth token here>@iburak-infoblox/atlas-contacts-app/db/migrations
   version: 100

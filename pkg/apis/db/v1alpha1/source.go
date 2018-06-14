@@ -43,7 +43,18 @@ func (v *ValueSource) Resolve(c kubernetes.Interface, ns string) (string, error)
 		return "", fmt.Errorf("key '%s' not found in config map '%s.%s'",
 			v.ConfigMapKeyRef.Key, ns, v.ConfigMapKeyRef.Name)
 	}
-	//TODO: resolve from secret
+
+	if v.SecretKeyRef != nil {
+		sec, err := c.CoreV1().Secrets(ns).Get(v.SecretKeyRef.Name, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+		if s, ok := sec.Data[v.SecretKeyRef.Key]; ok {
+			return string(s), nil
+		}
+		return "", fmt.Errorf("key '%s' not found in secrets '%s.%s'",
+			v.SecretKeyRef.Key, ns, v.SecretKeyRef.Name)
+	}
 
 	return "", nil
 }

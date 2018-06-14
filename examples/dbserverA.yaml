@@ -1,0 +1,11 @@
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 5432
+  superUser: "postgres"
+  superUserPassword: "postgres"
+  postgres:
+    image: postgres
+  dsn: postgres://postgres:postgres@172.17.0.2:5432/postgres?sslmode=disable

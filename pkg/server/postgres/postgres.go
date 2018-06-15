@@ -144,16 +144,16 @@ func (p *PostgresPlugin) DiffPod(key string, s *atlas.DatabaseServer, pod *corev
 func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
 	// connect
 	sqldb, err := sql.Open("postgres", dsn)
-	defer sqldb.Close()
 	if err != nil {
 		return err
 	}
+	defer sqldb.Close()
 	// check if it exists; if not create it
 	rows, err := sqldb.Query(`SELECT 1 FROM pg_database WHERE datname=$1`, db.Name)
-	defer rows.Close()
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	if rows.Next() {
 		return nil

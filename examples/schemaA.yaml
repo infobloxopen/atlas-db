@@ -3,7 +3,6 @@ kind: DatabaseSchema
 metadata:
   name: myschema
 spec:
-  database: mydb
-  git: github://iburak-infoblox:<place password or oauth token here>@iburak-infoblox/atlas-contacts-app/migrations
-  version: 100
-
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  version: 001

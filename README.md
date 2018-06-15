@@ -75,12 +75,12 @@ spec:
 ## Databases
 
 This resource is used to manage the lifecycle of specific databases on a database
-server instance. create user specific to this database.
+server instance. create specified user for this database and one user with admin
+role is must.
 
-These will create a `Secret` with the DSN to connect as admin-user to the database. One can
-skip this by not providing users information. That implies `Database Schema` will use `dsn`
-to connect database.
-
+These will create a `Secret` with the DSN to connect as admin-user to the
+database. One can skip this by not providing users information. That implies
+`Database Schema` will use user provided `dsn` to connect database.
 
 ```
 apiVersion: atlasdb.infoblox.com/v1alpha1
@@ -128,7 +128,7 @@ spec:
 In development environment `dsnFrom` can be replaced with just `dsn`
 
 ```
-dsn: postgres://postgres:postgres@localhost:5432/postgres
+dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
 ```
 
 ## Database Schemas
@@ -144,7 +144,7 @@ metadata:
   name: myschema
 spec:
   database: mydb
-  git: github://iburak-infoblox:<place password or oauth token here>@iburak-infoblox/atlas-contacts-app/migrations
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
   version: 001
 ```
 
@@ -161,7 +161,7 @@ spec:
     secretKeyRef:
       name: mydbcreds
       key: dsn
-  git: github://iburak-infoblox:<place password or oauth token here>@iburak-infoblox/atlas-contacts-app/migrations
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
   version: 001
 ```
 In development environment `dsnFrom` can be replaced with just `dsn`

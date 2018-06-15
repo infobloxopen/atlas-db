@@ -31,7 +31,5 @@ metadata:
   name: myappdb
 spec:
   database: mydb
-  git:
-    repo: github.com/infobloxopen/atlas-contacts-app
-    dir: migrations
-    version: 100
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  version: 001

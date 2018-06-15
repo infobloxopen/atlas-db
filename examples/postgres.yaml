@@ -15,8 +15,8 @@ metadata:
   name: myappdb
 spec:
   users:
-  - name: me
-    password: foo
+  - name: postgres  # using superuser here till create user functionality available
+    password: postgres
     role: admin
   - name: you
     password: bar
@@ -30,5 +30,5 @@ metadata:
   name: myappschema
 spec:
   database: myappdb
-  git: github://iburak-infoblox:<place password or oauth token here>@iburak-infoblox/atlas-contacts-app/db/migrations
-  version: 100
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  version: 001

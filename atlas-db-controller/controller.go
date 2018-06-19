@@ -581,14 +581,6 @@ func (c *Controller) syncDatabase(key string) error {
 		}
 	}
 
-	err = p.SyncDatabase(db, dsn)
-	if err != nil {
-		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
-		c.updateDatabaseStatus(key, db, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
-		return err
-	}
-
 	// Update dsn related to a database which databaseschema will use.
 	err = c.syncDatabaseSecret(key, db, s)
 	if err != nil {
@@ -596,6 +588,14 @@ func (c *Controller) syncDatabase(key string) error {
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
 		// TODO: question should return error or nil.
+		return err
+	}
+
+	err = p.SyncDatabase(db, dsn)
+	if err != nil {
+		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
@@ -628,7 +628,7 @@ func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver
 		for _, user := range db.Spec.Users {
 			passwd := user.Password
 			if user.Role == "admin" {
-				if passwd == "" {
+				if user.PasswordFrom != nil {
 					passwd, err = c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
 					if err != nil {
 						if errors.IsNotFound(err) {
@@ -637,6 +637,7 @@ func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver
 							return err
 						}
 					}
+					user.Password = passwd
 				}
 				dsn := server.ActivePlugin(dbserver).Dsn(user.Name, passwd, db, dbserver)
 				secret, err = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(

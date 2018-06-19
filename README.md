@@ -1,6 +1,6 @@
 # atlas-db-controller
 
-**This is early code and not complete.**
+**only validated with PostgreSQL others are under development**
 
 This controller manages three types of resources:
 
@@ -19,7 +19,7 @@ and maintain a specific version of the database schema.
 ## Database Servers
 
 This resource is used manage the lifecyle of a database server instance. Currently
-supported are MySQL, PostgresSQL, and RDS instances.
+supported are PostgresSQL & MySQL. RDS instances is under development.
 
 ### Pod-Based Servers
 
@@ -31,6 +31,26 @@ These will result in the creation of three resources:
 - A `Pod` with the same name as the `DatabaseServer` resource.
 - A cluster IP `Service` with the same name as the `DatabaseServer` resource.
 - A `Secret` with the DSN to connect as super-user to the database.
+
+
+#### PostgreSQL
+
+To create a PostgreSQL database server instance, you specify the PostgreSQL member of the
+DatabaseServer resource.
+
+```
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 5432
+  superUser: "postgres"
+  superUserPassword: "postgres"
+  postgres:
+    image: postgres
+```
+
 
 #### MySQL
 
@@ -44,18 +64,23 @@ metadata:
   name: mydbserver
 spec:
   servicePort: 3306
-  port: 3306
   rootPassword: "root"
   mySQL:
     image: mysql
 ```
 
-### Cloud Servers
+### Cloud Servers ( WIP )
+
 
 ## Databases
 
 This resource is used to manage the lifecycle of specific databases on a database
-server instance.
+server instance. create specified user for this database and one user with admin
+role is must.
+
+These will create a `Secret` with the DSN to connect as admin-user to the
+database. One can skip this by not providing users information. That implies
+`Database Schema` will use user provided `dsn` to connect database.
 
 ```
 apiVersion: atlasdb.infoblox.com/v1alpha1
@@ -73,6 +98,7 @@ spec:
         name: mydbsecrets
         key: adminpw
   server: mydbserver
+  serverType: postgres
 ```
 
 Or, if you didn't use a `DatabaseServer` to provision the server:
@@ -96,7 +122,13 @@ spec:
     secretKeyRef:
       name: mysecrets
       key: dsn
-  serverType: mysql
+  serverType: postgres
+```
+
+In development environment `dsnFrom` can be replaced with just `dsn`
+
+```
+dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
 ```
 
 ## Database Schemas
@@ -109,15 +141,11 @@ manages the versioning an execution of those migrations.
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: DatabaseSchema
 metadata:
-  name: mydb
+  name: myschema
 spec:
-  database:
-    name: mydb
-    dsn: dsn_mydbadmin
-  schema:
-    repo: github.com/infobloxopen/atlas-contacts-app
-    dir: migrations
-    version: 100
+  database: mydb
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  version: 001
 ```
 
 Alternatively, if you have manually created the database, you can
@@ -127,15 +155,52 @@ explicitly list the database type and connection details.
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: DatabaseSchema
 metadata:
-  name: mydb
+  name: myschema
 spec:
-  mysql:
-    dsnFrom:
-      secretKeyRef:
-        name: mydbcreds
-        key: dsn
-  schema:
-    repo: github.com/infobloxopen/atlas-contacts-app
-    dir: migrations
-    version: 100
+  dsnFrom:
+    secretKeyRef:
+      name: mydbcreds
+      key: dsn
+  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  version: 001
+```
+In development environment `dsnFrom` can be replaced with just `dsn`
+
+```
+dsn: postgres://postgres:postgres@localhost:5432/postgres
+```
+
+## Steps to create secrets
+
+Assume 'infoblox@123' is your password for admin user first base64 encode it.
+
+```
+$ echo -n "infoblox@123" | tr -d '\n' | base64
+aW5mb2Jsb3hAMTIz
+```
+
+You have to update this base64 encoded value below
+```
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mydbsecret
+  namespace: default
+type: Opaque
+data:
+  adminUserPass: aW5mb2Jsb3hAMTIz
+  dsn: <UPDATE YOUR ENCODED VALUE>
+```
+
+Onemore way to create secret is update the value in a file say `/tmp/dsn`
+```
+$cat /tmp/dsn
+postgres://postgres:postgres@192.168.39.216:5432/postgres?sslmode=disable"
+```
+
+Execute below command to create secret name `mydbsecret` with key `dsn`
+in default namespace.
+```
+kubectl create secret -n default generic mydbsecret --from-file=/tmp/dsn
 ```

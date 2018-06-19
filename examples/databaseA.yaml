@@ -1,7 +1,7 @@
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: Database
 metadata:
-  name: mydbA
+  name: mydb
 spec:
   serverType: postgres
-  dsn: postgres://postgres:postgres@localhost:5432/postgres
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable

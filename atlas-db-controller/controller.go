@@ -587,8 +587,7 @@ func (c *Controller) syncDatabase(key string) error {
 		msg := fmt.Sprintf("error syncing database secrets '%s': %s", key, err)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
-		// TODO: question should return error or nil.
-		return err
+		return nil
 	}
 
 	err = p.SyncDatabase(db, dsn)
@@ -616,45 +615,46 @@ func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver
 		glog.V(4).Info(" Database users not provided. Skip database secret creation")
 		return nil
 	}
-	secret, err := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
+	secret, errs := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
 
 	//TODO: check if the secret matches the spec and change it if not
 	//this will require additional support from the database plugin
 
 	// If the resource doesn't exist, we'll create it.
 	// TODO: creating dsn for admin user alone for now. non-admin users also we should create.
-	if errors.IsNotFound(err) {
-		glog.V(4).Info("Database secrets not found. Creating...")
-		for _, user := range db.Spec.Users {
-			passwd := user.Password
-			if user.Role == "admin" {
-				if user.PasswordFrom != nil {
-					passwd, err = c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
-					if err != nil {
-						if errors.IsNotFound(err) {
-							msg := fmt.Sprintf("waiting for secret or configmap for %s", user.Name)
-							c.updateDatabaseStatus(key, db, StatePending, msg)
-							return err
-						}
+	var err error
+	for index, user := range db.Spec.Users {
+		passwd := user.Password
+		if user.Role == "admin" {
+			if user.PasswordFrom != nil {
+				passwd, err = c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
+				if err != nil {
+					if errors.IsNotFound(err) {
+						msg := fmt.Sprintf("waiting for secret or configmap for %s", user.Name)
+						c.updateDatabaseStatus(key, db, StatePending, msg)
+						return err
 					}
-					user.Password = passwd
 				}
+				db.Spec.Users[index].Password = passwd
+			}
+			if errors.IsNotFound(errs) {
+				glog.V(4).Info("Database secrets not found. Creating...")
 				dsn := server.ActivePlugin(dbserver).Dsn(user.Name, passwd, db, dbserver)
-				secret, err = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(
+				secret, errs = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(
 					&corev1.Secret{
 						ObjectMeta: c.objMeta(db, "Secret"),
 						StringData: map[string]string{"dsn": dsn},
 					},
 				)
-
 			}
 		}
 	}
+
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
+	if errs != nil {
+		return errs
 	}
 
 	// If it is not controlled by this Database resource, we should log

@@ -158,7 +158,7 @@ func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		glog.V(4).Info("Database %s exists", db.Name)
+		glog.V(4).Infof("Database %s exists", db.Name)
 		err = checkUsers(db, sqldb)
 		if err != nil {
 			return err

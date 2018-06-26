@@ -1,6 +1,6 @@
 # atlas-db-controller
 
-**only validated with PostgreSQL others are under development**
+**only validated with PostgreSQL database others are under development**
 
 This controller manages three types of resources:
 
@@ -15,6 +15,13 @@ on that server, along with users and associated `Secrets` as defined in the spec
 one user with administrative access to that database is required. Finally, the `DatabaseSchema`
 resource will use the administrative `Secret` created by the `Database` resource to install
 and maintain a specific version of the database schema.
+
+## Prerequisite
+   - Kubernetes cluster version should be > 1.9
+   - Migration/Initialization scripts should follow [this](https://github.com/golang-migrate/migrate/blob/master/MIGRATIONS.md)
+   - GitHub is the only supported source for Migration scripts.
+   - To access gitHub source need user's **personal access tokens**
+   - PostgresSQL Database is only supported end to end.
 
 ## Database Servers
 
@@ -149,7 +156,8 @@ spec:
 ```
 
 Alternatively, if you have manually created the database, you can
-explicitly list the database type and connection details.
+explicitly mention database connection details using `dsn`. No need to
+specify database in that case.
 
 ```
 apiVersion: atlasdb.infoblox.com/v1alpha1
@@ -161,16 +169,35 @@ spec:
     secretKeyRef:
       name: mydbcreds
       key: dsn
-  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  gitFrom:
+    secretKeyRef:
+      name: mydbcreds
+      key: gitURL
   version: 001
 ```
-In development environment `dsnFrom` can be replaced with just `dsn`
+In development environment `dsnFrom` can be replaced with just `dsn` and
+`gitFrom` can be replaced by `git`
 
 ```
 dsn: postgres://postgres:postgres@localhost:5432/postgres
+git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
 ```
 
-## Steps to create secrets
+## construct of GitHub url
+
+`github://user:personal-access-token@owner/repo/path#ref`
+
+| URL Query  | Description |
+|------------|-------------|
+| user | The username of the user connecting |
+| personal-access-token  | An access token from Github (https://github.com/settings/tokens) |
+| owner | the repo owner |
+| repo | the name of the repository |
+| path | path in repo to migrations |
+| ref | (optional) can be a SHA, branch, or tag |
+
+
+## Steps to create K8s secrets to secure (passwords, dsn, gitURL)
 
 Assume 'infoblox@123' is your password for admin user first base64 encode it.
 

@@ -231,3 +231,53 @@ in default namespace.
 ```
 kubectl create secret -n default generic mydbsecret --from-file=/tmp/dsn
 ```
+
+### Developer Settings
+---
+You can deploy atlas-db-controller with multiple options
+
+* resync: Resync duration
+* logtostderr: Logs are written to standard error instead of to files.
+* v: Enable debug mode
+```
+<!--
+atlas-db.yaml
+-->
+
+...
+imagePullPolicy: Always
+args:
+  - "-resync=3m"
+  - "-logtostderr"
+  - "-v=4"
+```
+
+* LabelSelector: A selector to restrict the list of returned objects by their labels.
+If you do not specify this option, atlas-db-controller will default to everything.
+```
+<!--
+atlas-db.yaml
+-->
+
+...
+imagePullPolicy: Always
+args:
+  - "-l=monitor=atlas-deployment-1"
+```
+
+For this option to work as intended, your resources should have proper labelling
+```
+<!--
+dbserverA.yaml
+-->
+
+...
+kind: DatabaseServer
+metadata:
+  name: postgres
+  labels:
+    monitor: atlas-deployment-1
+  spec:
+...
+```
+

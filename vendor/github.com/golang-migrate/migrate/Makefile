@@ -1,4 +1,4 @@
-SOURCE ?= file go-bindata github aws-s3 google-cloud-storage
+SOURCE ?= file go_bindata github aws_s3 google_cloud_storage godoc_vfs
 DATABASE ?= postgres mysql redshift cassandra spanner cockroachdb clickhouse
 VERSION ?= $(shell git describe --tags 2>/dev/null | cut -c 2-)
 TEST_FLAGS ?=
@@ -8,9 +8,9 @@ COVERAGE_DIR ?= .coverage
 
 build-cli: clean
 	-mkdir ./cli/build
-	cd ./cli && GOOS=linux GOARCH=amd64 go build -a -o build/migrate.linux-amd64 -ldflags='-X main.Version=$(VERSION)' -tags '$(DATABASE) $(SOURCE)' .
-	cd ./cli && GOOS=darwin GOARCH=amd64 go build -a -o build/migrate.darwin-amd64 -ldflags='-X main.Version=$(VERSION)' -tags '$(DATABASE) $(SOURCE)' .
-	cd ./cli && GOOS=windows GOARCH=amd64 go build -a -o build/migrate.windows-amd64.exe -ldflags='-X main.Version=$(VERSION)' -tags '$(DATABASE) $(SOURCE)' .
+	cd ./cli && GOOS=linux GOARCH=amd64 go build -a -o build/migrate.linux-amd64 -ldflags='-X main.Version=$(VERSION) -extldflags "-static"' -tags '$(DATABASE) $(SOURCE)' .
+	cd ./cli && GOOS=darwin GOARCH=amd64 go build -a -o build/migrate.darwin-amd64 -ldflags='-X main.Version=$(VERSION) -extldflags "-static"' -tags '$(DATABASE) $(SOURCE)' .
+	cd ./cli && GOOS=windows GOARCH=amd64 go build -a -o build/migrate.windows-amd64.exe -ldflags='-X main.Version=$(VERSION) -extldflags "-static"' -tags '$(DATABASE) $(SOURCE)' .
 	cd ./cli/build && find . -name 'migrate*' | xargs -I{} tar czf {}.tar.gz {}
 	cd ./cli/build && shasum -a 256 * > sha256sum.txt
 	cat ./cli/build/sha256sum.txt
@@ -55,14 +55,6 @@ kill-orphaned-docker-containers:
 
 html-coverage:
 	go tool cover -html=$(COVERAGE_DIR)/combined.txt
-
-
-deps:
-	-go get -v -u ./... 
-	-go test -v -i ./...
-	# TODO: why are these not being fetched by `go get`?
-	-go get -u github.com/fsouza/fake-gcs-server/fakestorage
-	-go get -u github.com/kshvakov/clickhouse
 
 
 list-external-deps:
@@ -116,7 +108,7 @@ define external_deps
 endef
 
 
-.PHONY: build-cli clean test-short test test-with-flags deps html-coverage \
+.PHONY: build-cli clean test-short test test-with-flags html-coverage \
         restore-import-paths rewrite-import-paths list-external-deps release \
         docs kill-docs open-docs kill-orphaned-docker-containers
 

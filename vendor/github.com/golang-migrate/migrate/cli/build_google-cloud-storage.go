@@ -1,7 +1,7 @@
-// +build google-cloud-storage
+// +build google_cloud_storage
 
 package main
 
 import (
-	_ "github.com/golang-migrate/migrate/source/google-cloud-storage"
+	_ "github.com/golang-migrate/migrate/source/google_cloud_storage"
 )

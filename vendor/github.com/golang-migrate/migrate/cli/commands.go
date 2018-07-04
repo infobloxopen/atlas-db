@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func nextSeq(matches []string, dir string, seqDigits int) (string, error) {
@@ -48,8 +49,11 @@ func nextSeq(matches []string, dir string, seqDigits int) (string, error) {
 	return nextSeqStr, nil
 }
 
-func createCmd(dir string, timestamp int64, name string, ext string, seq bool, seqDigits int) {
+func createCmd(dir string, startTime time.Time, format string, name string, ext string, seq bool, seqDigits int) {
 	var base string
+	if seq && format != defaultTimeFormat {
+		log.fatalErr(errors.New("The seq and format options are mutually exclusive"))
+	}
 	if seq {
 		if seqDigits <= 0 {
 			log.fatalErr(errors.New("Digits must be positive"))
@@ -64,7 +68,16 @@ func createCmd(dir string, timestamp int64, name string, ext string, seq bool, s
 		}
 		base = fmt.Sprintf("%v%v_%v.", dir, nextSeqStr, name)
 	} else {
-		base = fmt.Sprintf("%v%v_%v.", dir, timestamp, name)
+		switch format {
+		case "":
+			log.fatal("Time format may not be empty")
+		case "unix":
+			base = fmt.Sprintf("%v%v_%v.", dir, startTime.Unix(), name)
+		case "unixNano":
+			base = fmt.Sprintf("%v%v_%v.", dir, startTime.UnixNano(), name)
+		default:
+			base = fmt.Sprintf("%v%v_%v.", dir, startTime.Format(format), name)
+		}
 	}
 
 	os.MkdirAll(dir, os.ModePerm)

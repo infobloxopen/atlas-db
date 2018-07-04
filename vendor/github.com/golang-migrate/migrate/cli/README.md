@@ -17,11 +17,9 @@ correspond to the names of the sub-packages underneath the
 
 #### MacOS
 
-([todo #156](https://github.com/mattes/migrate/issues/156))
+We have not released support for homebrew yet, but there is a live issue here: [todo #156](https://github.com/mattes/migrate/issues/156)
 
-```
-$ brew install migrate --with-postgres
-```
+Any help to make this happen would be appreciated!
 
 #### Linux (*.deb package)
 

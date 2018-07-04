@@ -11,7 +11,6 @@ import (
 type Plugin interface {
 	Name() string
 	DatabasePlugin() DatabasePlugin
-	Dsn(string, string, *atlas.Database, *atlas.DatabaseServer) string
 }
 
 // CloudPlugin is for instances created by an IaaS platform
@@ -28,6 +27,7 @@ type PodPlugin interface {
 
 type DatabasePlugin interface {
 	SyncDatabase(*atlas.Database, string) error
+	Dsn(string, string, *atlas.Database, *atlas.DatabaseServer) string
 }
 
 func PodImage(image, version, defImage, defVersion string) string {

@@ -34,6 +34,9 @@ import (
 	informers "github.com/infobloxopen/atlas-db/pkg/client/informers/externalversions"
 	listers "github.com/infobloxopen/atlas-db/pkg/client/listers/db/v1alpha1"
 
+	"strconv"
+	"strings"
+
 	"github.com/infobloxopen/atlas-db/pkg/server"
 	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
 )
@@ -325,6 +328,11 @@ func (c *Controller) syncSchema(key string) error {
 				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 				return err
+			} else if db.Status.State != StateSuccess {
+				schemaStatusMsg = fmt.Sprintf("waiting for database `%s`", db.Name)
+				c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
+				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
+				return err
 			}
 
 			glog.V(4).Infof("Server type requested: %s", db.Spec.ServerType)
@@ -582,7 +590,7 @@ func (c *Controller) syncDatabase(key string) error {
 	}
 
 	// Update dsn related to a database which databaseschema will use.
-	err = c.syncDatabaseSecret(key, db, s)
+	err = c.syncDatabaseSecret(key, dsn, db, s, p)
 	if err != nil {
 		msg := fmt.Sprintf("error syncing database secrets '%s': %s", key, err)
 		c.updateDatabaseStatus(key, db, StateError, msg)
@@ -610,7 +618,7 @@ func (c *Controller) syncDatabase(key string) error {
 	return nil
 }
 
-func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver *atlas.DatabaseServer) error {
+func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbServer *atlas.DatabaseServer, dbPlugin plugin.DatabasePlugin) error {
 	if db.Spec.Users == nil {
 		glog.V(4).Info(" Database users not provided. Skip database secret creation")
 		return nil
@@ -639,8 +647,20 @@ func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver
 			}
 			if errors.IsNotFound(errs) {
 				glog.V(4).Info("Database secrets not found. Creating...")
-				dsn := server.ActivePlugin(dbserver).Dsn(user.Name, passwd, db, dbserver)
-				secret, errs = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(
+				if dbServer != nil {
+					dsn = dbPlugin.Dsn(user.Name, passwd, db, dbServer)
+				} else {
+					customDbServer := &atlas.DatabaseServer{}
+					spec := atlas.DatabaseServerSpec{}
+					customDbServer.Spec = spec
+					splitDSN := strings.Split(strings.Split(dsn, "@")[1], "/")[0]
+					customDbServer.Spec.Host = strings.Split(splitDSN, ":")[0]
+					port, _ := strconv.Atoi(strings.Split(splitDSN, ":")[1])
+					customDbServer.Spec.ServicePort = int32(port)
+					dsn = dbPlugin.Dsn(user.Name, passwd, db, customDbServer)
+				}
+
+				secret, err = c.kubeclientset.CoreV1().Secrets(db.Namespace).Create(
 					&corev1.Secret{
 						ObjectMeta: c.objMeta(db, "Secret"),
 						StringData: map[string]string{"dsn": dsn},
@@ -661,7 +681,7 @@ func (c *Controller) syncDatabaseSecret(key string, db *atlas.Database, dbserver
 	// a warning to the event recorder and ret
 	if !metav1.IsControlledBy(secret, db) {
 		msg := fmt.Sprintf(MessageSecretExists, secret.Name)
-		c.recorder.Event(dbserver, corev1.EventTypeWarning, ErrResourceExists, msg)
+		c.recorder.Event(dbServer, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
 
@@ -792,7 +812,7 @@ func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error
 			}
 		}
 
-		dsn := server.ActivePlugin(s).Dsn(su, supw, nil, s)
+		dsn := server.ActivePlugin(s).DatabasePlugin().Dsn(su, supw, nil, s)
 		secret, err = c.kubeclientset.CoreV1().Secrets(s.Namespace).Create(
 			&corev1.Secret{
 				ObjectMeta: c.objMeta(s, "Secret"),

@@ -14,5 +14,5 @@
 
 # Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
 .glide/
-atlas-db-controller
+atlas-db-controller/atlas-db-controller
 bin/

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/golang-migrate/migrate"
+	"github.com/golang-migrate/migrate/database"
 	"github.com/golang/glog"
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -11,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 )
+
+var dbDriverMap = make(map[string]database.Driver)
 
 func (c *Controller) syncSchema(key string) error {
 	glog.Infof("Schema key: %v", key)
@@ -116,7 +119,22 @@ func (c *Controller) syncSchema(key string) error {
 		}
 	}
 
-	mgrt, err := migrate.New(gitURL, dsn)
+	// migrate package is not closing the dbconnnection so using a local cache reuse dbconnection.
+	// TODO when same resource with different dsn arrives; need to unset local cache during schema resource deletion.
+	dbDriver, ok := dbDriverMap[schema.Namespace+schema.Name]
+	if !ok {
+		dbDriver, err = database.Open(dsn)
+		if err != nil {
+			schemaStatusMsg = fmt.Sprintf("failed to open dbconnection: %s", err)
+			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+			err = fmt.Errorf(schemaStatusMsg)
+			runtime.HandleError(err)
+			return err
+		}
+		dbDriverMap[schema.Namespace+schema.Name] = dbDriver
+	}
+
+	mgrt, err := migrate.NewWithDatabaseInstance(gitURL, dbName, dbDriver)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
@@ -124,7 +142,6 @@ func (c *Controller) syncSchema(key string) error {
 		runtime.HandleError(err)
 		return err
 	}
-	defer mgrt.Close()
 
 	ver, dirt, err := mgrt.Version()
 	if err != nil {

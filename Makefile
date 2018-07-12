@@ -2,9 +2,9 @@ REPO              := github.com/infobloxopen/atlas-db
 BUILD_PATH        := bin
 
 # configuration for image
-DEFAULT_APP_NAME  := atlas.dbcontroller
+DEFAULT_APP_NAME  := atlas-db
 APP_NAME          ?= $(DEFAULT_APP_NAME)
-DEFAULT_REGISTRY  := infobloxcto
+DEFAULT_REGISTRY  := infoblox
 REGISTRY          ?= $(DEFAULT_REGISTRY)
 DEFAULT_VERSION   := $(shell git describe --dirty=-dirty --always)
 VERSION           ?= $(DEFAULT_VERSION)

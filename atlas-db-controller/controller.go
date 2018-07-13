@@ -86,14 +86,17 @@ type Controller struct {
 	schemasLister  listers.DatabaseSchemaLister
 	schemasSynced  cache.InformerSynced
 
-	serverQueue workqueue.RateLimitingInterface
-	dbQueue     workqueue.RateLimitingInterface
-	schemaQueue workqueue.RateLimitingInterface
+	serverQueue    workqueue.RateLimitingInterface
+	dbQueue        workqueue.RateLimitingInterface
+	dbDeletedQ     workqueue.RateLimitingInterface
+	schemaQueue    workqueue.RateLimitingInterface
+	schemaDeletedQ workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
 }
 
 type syncHandler func(string) error
+type syncDeletedHandler func(interface{}) error
 
 // NewController returns a new atlas DB controller
 func NewController(
@@ -135,9 +138,11 @@ func NewController(
 		dbsLister:      dbInformer.Lister(),
 		dbsSynced:      dbInformer.Informer().HasSynced,
 		dbQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Databases"),
+		dbDeletedQ:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Databases"),
 		schemasLister:  schemaInformer.Lister(),
 		schemasSynced:  schemaInformer.Informer().HasSynced,
 		schemaQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseSchemas"),
+		schemaDeletedQ: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseSchemas"),
 
 		recorder: recorder,
 	}
@@ -156,6 +161,7 @@ func NewController(
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueDatabase(new)
 		},
+		DeleteFunc: controller.enqueueDatabaseDeleted,
 	})
 	// Set up an event handler for when DatabaseSchema resources change
 	schemaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -163,6 +169,7 @@ func NewController(
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueDatabaseSchema(new)
 		},
+		DeleteFunc: controller.enqueueDatabaseSchemaDeleted,
 	})
 	// Set up an event handlers for resources we might own, and then
 	// enqueue them if we own them.
@@ -199,10 +206,12 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	defer runtime.HandleCrash()
 	defer c.serverQueue.ShutDown()
 	defer c.dbQueue.ShutDown()
+	defer c.dbDeletedQ.ShutDown()
 	defer c.schemaQueue.ShutDown()
+	defer c.schemaDeletedQ.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	glog.Info("Starting atlas-db-controller")
+	glog.Infof("Starting %s", controllerAgentName)
 
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
@@ -216,7 +225,9 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 		// TODO make sure to do not try run all of three once per second on excatly the same moment
 		go wait.Until(c.runServerWorker, time.Second, stopCh)
 		go wait.Until(c.runDatabaseWorker, time.Second, stopCh)
+		go wait.Until(c.runDatabaseDeletedWorker, time.Second, stopCh)
 		go wait.Until(c.runSchemaWorker, time.Second, stopCh)
+		go wait.Until(c.runSchemaDeletedWorker, time.Second, stopCh)
 	}
 
 	glog.Info("Started workers")
@@ -239,13 +250,23 @@ func (c *Controller) runDatabaseWorker() {
 	}
 }
 
+func (c *Controller) runDatabaseDeletedWorker() {
+	for c.processDeletedWorkItem(c.dbDeletedQ, c.syncDatabaseDeleted) {
+	}
+}
+
 func (c *Controller) runSchemaWorker() {
 	for c.processNextWorkItem(c.schemaQueue, c.syncSchema) {
 	}
 }
 
+func (c *Controller) runSchemaDeletedWorker() {
+	for c.processDeletedWorkItem(c.schemaDeletedQ, c.syncSchemaDeleted) {
+	}
+}
+
 // processNextWorkItem will read a single work item off the queue and
-// attempt to process it, by calling syncServer.
+// attempt to process it, by calling syncObject.
 func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, syncObject syncHandler) bool {
 	obj, shutdown := q.Get()
 
@@ -272,6 +293,39 @@ func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, sync
 		// get queued again until another change happens.
 		q.Forget(obj)
 		glog.Infof("Successfully synced '%s'", key)
+		return nil
+	}(obj)
+
+	if err != nil {
+		runtime.HandleError(err)
+		return true
+	}
+
+	return true
+}
+
+// processDeletedWorkItem will read a single work item off the deleted item queue and
+// attempt to process it, by calling syncObject.
+func (c *Controller) processDeletedWorkItem(q workqueue.RateLimitingInterface, syncObject syncDeletedHandler) bool {
+	object, shutdown := q.Get()
+	obj := object.(metav1.Object)
+
+	if shutdown {
+		return false
+	}
+
+	// We wrap this block in a func so we can defer q.Done.
+	err := func(obj metav1.Object) error {
+		defer q.Done(obj)
+
+		// Run the sync deleted handler, passing it the object of the resource to be synced.
+		if err := syncObject(obj); err != nil {
+			return fmt.Errorf("error deleting '%s': %s", obj.GetName(), err.Error())
+		}
+		// Finally, if no error occurs we Forget this item so it does not
+		// get queued again until another change happens.
+		q.Forget(obj)
+		glog.Infof("Successfully deleted '%s'", obj.GetName())
 		return nil
 	}(obj)
 

@@ -17,7 +17,8 @@ resource will use the administrative `Secret` created by the `Database` resource
 and maintain a specific version of the database schema.
 
 ## Prerequisite
-   - Kubernetes cluster version should be > 1.9
+   - Kubernetes cluster version should be >= 1.10
+   - `CustomResourceSubresources` must be enabled. This can be done by passing `--feature-gates=CustomResourceSubresources=true` while starting kubernetes cluster.
    - Migration/Initialization scripts should follow [this](https://github.com/golang-migrate/migrate/blob/master/MIGRATIONS.md)
    - GitHub is the only supported source for Migration scripts.
    - To access gitHub source need user's **personal access tokens**

@@ -42,12 +42,7 @@ const (
 	// to sync due to a resource it should own already existing
 	ErrResourceExists = "ErrResourceExists"
 
-	MessageServiceExists  = "Service %q already exists and is not managed by DatabaseServer"
-	MessageSecretExists   = "Secret %q already exists and is not managed by DatabaseServer"
-	MessagePodExists      = "Pod %q already exists and is not managed by DatabaseServer"
-	MessageServerSynced   = "DatabaseServer synced successfully"
-	MessageDatabaseSynced = "Database synced successfully"
-	MessageSchemaSynced   = "DatabaseSchema synced successfully"
+	MessageSecretExists = "Secret %q already exists and is not managed by DatabaseServer"
 
 	StateCreating = "Creating"
 	StateDeleting = "Deleting"

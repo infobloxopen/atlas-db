@@ -7,6 +7,7 @@ import (
 	"github.com/golang-migrate/migrate/database"
 	"github.com/golang/glog"
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -14,6 +15,11 @@ import (
 )
 
 var dbDriverMap = make(map[string]database.Driver)
+
+const (
+	MessageSchemaSynced     = "DatabaseSchema synced successfully"
+	MessageSchemaSyncFailed = "DatabaseSchema sync failed"
+)
 
 func (c *Controller) syncSchema(key string) error {
 	glog.Infof("Schema key: %v", key)
@@ -170,6 +176,7 @@ func (c *Controller) syncSchema(key string) error {
 		glog.Infof("database `%s` has synced version %d", dbName, toVersion)
 		schemaStatusMsg = fmt.Sprintf("database `%s` has synced version %d", dbName, toVersion)
 		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
+		c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, MessageSchemaSynced)
 		return nil
 	}
 
@@ -179,17 +186,17 @@ func (c *Controller) syncSchema(key string) error {
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
+		c.recorder.Event(schema, corev1.EventTypeWarning, StateError, MessageSchemaSyncFailed)
 		return err
 	}
 
 	schemaStatusMsg := fmt.Sprintf("Successfully synced schema '%s'", key)
 	schema, err = c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
-
 	if err != nil {
 		runtime.HandleError(err)
 		return err
 	}
-
+	c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, MessageSchemaSynced)
 	return nil
 }
 
@@ -200,12 +207,9 @@ func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.Databa
 	schemaCopy := schema.DeepCopy()
 	schemaCopy.Status.State = state
 	schemaCopy.Status.Message = msg
-	// Until #38113 is merged, we must use Update instead of UpdateStatus to
-	// update the Status block of the resource. UpdateStatus will not
-	// allow changes to the Spec of the resource, which is ideal for ensuring
+	// UpdateStatus will not allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-
-	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).Update(schemaCopy)
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).UpdateStatus(schemaCopy)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database schema '%s': %s", state, key, err))
 		return schema, err

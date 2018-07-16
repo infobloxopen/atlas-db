@@ -60,7 +60,6 @@ build: deps fmt
 
 # Pushes the image to docker
 push: build
-	@docker push $(IMAGE_NAME)
 	@docker push $(IMAGE_LATEST)
 
 # Runs the tests

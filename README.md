@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/infobloxopen/atlas-db.svg?branch=master)](https://travis-ci.org/infobloxopen/atlas-db)
+
 # atlas-db-controller
 
 **Current support only for Postgres database; other databases are under development.**

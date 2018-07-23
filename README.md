@@ -304,5 +304,5 @@ postgres://postgres:postgres@192.168.39.216:5432/postgres?sslmode=disable"
 Then execute the below command to create secret named `mydbsecret` with key `dsn` in
 default namespace.
 ```
-kubectl create secret -n default generic mydbsecret --from-file=/tmp/dsn
+kubectl create secret -n default generic mydbsecrets --from-file=/tmp/dsn
 ```

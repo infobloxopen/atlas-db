@@ -70,7 +70,8 @@ func (c *Controller) syncSchema(key string) error {
 			} else if db.Status.State != StateSuccess {
 				schemaStatusMsg = fmt.Sprintf("waiting for database `%s`", db.Name)
 				c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
-				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
+				err = fmt.Errorf(schemaStatusMsg)
+				runtime.HandleError(err)
 				return err
 			}
 

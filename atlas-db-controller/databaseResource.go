@@ -218,7 +218,7 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 	// a warning to the event recorder and ret
 	if !metav1.IsControlledBy(secret, db) {
 		msg := fmt.Sprintf(MessageSecretExists, secret.Name)
-		c.recorder.Event(dbServer, corev1.EventTypeWarning, ErrResourceExists, msg)
+		c.recorder.Event(db, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
 

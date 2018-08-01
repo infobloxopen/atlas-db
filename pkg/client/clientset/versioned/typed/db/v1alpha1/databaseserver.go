@@ -37,7 +37,6 @@ type DatabaseServersGetter interface {
 type DatabaseServerInterface interface {
 	Create(*v1alpha1.DatabaseServer) (*v1alpha1.DatabaseServer, error)
 	Update(*v1alpha1.DatabaseServer) (*v1alpha1.DatabaseServer, error)
-	UpdateStatus(*v1alpha1.DatabaseServer) (*v1alpha1.DatabaseServer, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.DatabaseServer, error)
@@ -115,20 +114,6 @@ func (c *databaseServers) Update(databaseServer *v1alpha1.DatabaseServer) (resul
 		Namespace(c.ns).
 		Resource("databaseservers").
 		Name(databaseServer.Name).
-		Body(databaseServer).
-		Do().
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-func (c *databaseServers) UpdateStatus(databaseServer *v1alpha1.DatabaseServer) (result *v1alpha1.DatabaseServer, err error) {
-	result = &v1alpha1.DatabaseServer{}
-	err = c.client.Put().
-		Namespace(c.ns).
-		Resource("databaseservers").
-		Name(databaseServer.Name).
-		SubResource("status").
 		Body(databaseServer).
 		Do().
 		Into(result)

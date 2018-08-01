@@ -22,12 +22,11 @@ in the spec. **At least one user with administrative access to the database is r
 resource to install and maintain a specific version of the database schema.
 
 ## Prerequisite
-   - Kubernetes cluster version should be >= 1.10
-   - `CustomResourceSubresources` must be enabled. This can be done by passing `--feature-gates=CustomResourceSubresources=true` while starting kubernetes cluster.
+   - Kubernetes cluster version should be > 1.9
    - Migration/Initialization scripts should comply with [these](https://github.com/golang-migrate/migrate/blob/master/MIGRATIONS.md) guidelines.
-   - To access gitHub, source need user's **personal access tokens**
+   - To access gitHub source need user's **personal access tokens**
    - Currently `GitHub` is the only supported source for migration scripts.
-   - Curent end to end support for Postgres database only.
+   - Current end to end support for Postgres database only.
 
 ## Custom Resources and Controller deployment
 Users need to create custom resources and controller instance to manage custom resources in

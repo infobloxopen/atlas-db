@@ -14,6 +14,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+const (
+	MessageServiceExists = "Service (%q) already exists and is not managed by DatabaseServer"
+	MessagePodExists     = "Pod (%q) already exists and is not managed by DatabaseServer"
+	MessageServerSynced  = "DatabaseServer (%q) synced successfully"
+)
+
 func (c *Controller) enqueueDatabaseServer(obj interface{}) {
 	var object metav1.Object
 	var ok bool
@@ -304,14 +310,15 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 }
 
 func (c *Controller) updateDatabaseServerStatus(key string, s *atlas.DatabaseServer, state, msg string) (*atlas.DatabaseServer, error) {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
 	copy := s.DeepCopy()
 	copy.Status.State = state
 	copy.Status.Message = msg
-	// Until #38113 is merged, we must use Update instead of UpdateStatus to
-	// update the Status block of the resource. UpdateStatus will not
-	// allow changes to the Spec of the resource, which is ideal for ensuring
+	// UpdateStatus will not allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).Update(copy)
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).UpdateStatus(copy)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database server '%s': %s", state, key, err))
 		return s, err

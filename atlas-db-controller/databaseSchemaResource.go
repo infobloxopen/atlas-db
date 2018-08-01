@@ -21,6 +21,9 @@ var dbDriverMap = make(map[string]database.Driver)
 const (
 	badConn    = "bad connection"
 	connClosed = "connection is already closed"
+
+	MessageSchemaSynced     = "DatabaseSchema (%q) synced successfully"
+	MessageSchemaSyncFailed = "DatabaseSchema (%q) sync failed"
 )
 
 func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
@@ -198,6 +201,7 @@ func (c *Controller) syncSchema(key string) error {
 		schemaStatusMsg = fmt.Sprintf("Databaseschema `%s` is in requested version %d", key, toVersion)
 		glog.Infof(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
+		c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, fmt.Sprintf(MessageSchemaSynced, key))
 		return nil
 	}
 
@@ -208,12 +212,14 @@ func (c *Controller) syncSchema(key string) error {
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
+		c.recorder.Event(schema, corev1.EventTypeWarning, StateError, MessageSchemaSyncFailed)
 		return err
 	}
 	msg := fmt.Sprintf("Migration successful from version %d to %d", ver, toVersion)
 	c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, msg)
 
 	c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
+	c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, fmt.Sprintf(MessageSchemaSynced, key))
 	return nil
 }
 
@@ -224,12 +230,9 @@ func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.Databa
 	schemaCopy := schema.DeepCopy()
 	schemaCopy.Status.State = state
 	schemaCopy.Status.Message = msg
-	// Until #38113 is merged, we must use Update instead of UpdateStatus to
-	// update the Status block of the resource. UpdateStatus will not
-	// allow changes to the Spec of the resource, which is ideal for ensuring
+	// UpdateStatus will not allow changes to the Spec of the resource, which is ideal for ensuring
 	// nothing other than resource status has been updated.
-
-	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).Update(schemaCopy)
+	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).UpdateStatus(schemaCopy)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database schema '%s': %s", state, key, err))
 		return schema, err

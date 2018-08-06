@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"strings"
+
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database"
 	"github.com/golang/glog"
@@ -14,6 +16,11 @@ import (
 )
 
 var dbDriverMap = make(map[string]database.Driver)
+
+const (
+	badConn    = "bad connection"
+	connClosed = "connection is already closed"
+)
 
 func (c *Controller) syncSchema(key string) error {
 	glog.Infof("Schema key: %v", key)
@@ -60,12 +67,6 @@ func (c *Controller) syncSchema(key string) error {
 				schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
-				return err
-			} else if db.Status.State != StateSuccess {
-				schemaStatusMsg = fmt.Sprintf("waiting for database `%s`", db.Name)
-				c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
-				err = fmt.Errorf(schemaStatusMsg)
-				runtime.HandleError(err)
 				return err
 			}
 
@@ -122,7 +123,8 @@ func (c *Controller) syncSchema(key string) error {
 
 	// migrate package is not closing the dbconnnection so using a local cache reuse dbconnection.
 	// TODO when same resource with different dsn arrives; need to unset local cache during schema resource deletion.
-	dbDriver, ok := dbDriverMap[schema.Namespace+schema.Name]
+	dbKey := schema.Namespace + "." + schema.Name
+	dbDriver, ok := dbDriverMap[dbKey]
 	if !ok {
 		dbDriver, err = database.Open(dsn)
 		if err != nil {
@@ -132,7 +134,7 @@ func (c *Controller) syncSchema(key string) error {
 			runtime.HandleError(err)
 			return err
 		}
-		dbDriverMap[schema.Namespace+schema.Name] = dbDriver
+		dbDriverMap[dbKey] = dbDriver
 	}
 
 	mgrt, err := migrate.NewWithDatabaseInstance(gitURL, dbName, dbDriver)
@@ -146,7 +148,15 @@ func (c *Controller) syncSchema(key string) error {
 
 	ver, dirt, err := mgrt.Version()
 	if err != nil {
-		if err == migrate.ErrNilVersion {
+		errString := err.Error()
+		if strings.Contains(errString, badConn) || strings.Contains(errString, connClosed) {
+			delete(dbDriverMap, dbKey)
+			schemaStatusMsg = fmt.Sprintf("database connection errorred: %s", err)
+			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
+			err = fmt.Errorf(schemaStatusMsg)
+			runtime.HandleError(err)
+			return err
+		} else if err == migrate.ErrNilVersion {
 			glog.Infof("database `%s` has no migration applied", dbName)
 			schemaStatusMsg = fmt.Sprintf("database `%s` has no migration applied", dbName)
 			c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)

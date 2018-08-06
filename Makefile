@@ -73,12 +73,14 @@ check-fmt:
 
 # --- Kuberenetes deployment ---
 # Deploy the service in kubernetes
-deploy:
-	@kubectl create -f deploy/atlas-db.yaml
+up:
+	@kubectl apply -f deploy/crd.yaml
+	@kubectl apply -f deploy/namespace.yaml
+	@kubectl apply -f deploy/atlas-db.yaml
 
-# Removes the kubernetes pod
-remove:
-	@kubectl delete -f deploy/atlas-db.yaml
+down:
+	@kubectl delete -f deploy/crd.yaml
+	@kubectl delete -f deploy/namespace.yaml
 
 vendor:
 	$(BUILDER) dep update -v

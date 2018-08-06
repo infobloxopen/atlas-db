@@ -59,7 +59,7 @@ spec:
       serviceAccountName: atlas-db-controller
       containers:
       - name: atlas-db-controller
-        image: infoblox/atlas-db:v0.1.0
+        image: infoblox/atlas-db:latest
         imagePullPolicy: Always
         args:
           - "-resync=3m"

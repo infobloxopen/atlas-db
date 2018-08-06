@@ -51,9 +51,6 @@ func (p *PostgresPlugin) Dsn(userName string, password string, db *atlas.Databas
 	}
 
 	dbHost := fmt.Sprintf("%s.%s", s.Name, s.Namespace)
-	if s.Spec.Host != "" {
-		dbHost = s.Spec.Host
-	}
 
 	// For superuser DSN creation database name will not be passed &
 	// for admin DSN creation database name will be passed

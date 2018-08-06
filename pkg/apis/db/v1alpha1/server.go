@@ -26,7 +26,7 @@ type DatabaseServerSpec struct {
 	SuperUserFrom         *ValueSource    `json:"superUserFrom"`
 	SuperUserPassword     string          `json:"superUserPassword"`
 	SuperUserPasswordFrom *ValueSource    `json:"superUserPasswordFrom"`
-	Host                  string          `json:"host"`
+	DBHost                string          `json:"dbHost"`
 	ServicePort           int32           `json:"servicePort"`
 }
 
@@ -41,12 +41,14 @@ type DatabaseServerPlugin struct {
 
 // RDSPlugin contains the details needed to provision an RDS instance.
 type RDSPlugin struct {
+	/* TODO Currently not supporting RDS instance provisioning
 	AllocatedStorage     int32  `json:"allocatedStorage"`
 	Iops                 int32  `json:"iops"`
 	DBInstanceClass      string `json:"dbInstanceClass"`
 	DBInstanceIdentifier string `json:"dbInstanceIdentifier"`
 	DBSubnetGroupName    string `json:"dbSubnetGroupName"`
-	Engine               string `json:"engine"`
+	*/
+	Engine string `json:"engine"`
 }
 
 // MySQLPlugin contains the details needed to provision a MySQL instance.

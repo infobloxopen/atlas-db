@@ -62,4 +62,6 @@ spec:
         image: infoblox/atlas-db:latest
         imagePullPolicy: Always
         args:
-          - "-resync=3m"
+          - "-resync=1m"
+          - "-logtostderr"
+          - "-v=4"

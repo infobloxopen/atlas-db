@@ -9,6 +9,7 @@ import (
 	"github.com/golang-migrate/migrate/database"
 	"github.com/golang/glog"
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -22,8 +23,19 @@ const (
 	connClosed = "connection is already closed"
 )
 
+func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		glog.Info("not enqueue schema object")
+		return
+	}
+	glog.Infof("enqueue schema object: %s", object.GetName())
+	c.enqueue(obj, c.schemaQueue)
+}
+
 func (c *Controller) syncSchema(key string) error {
-	glog.Infof("Schema key: %v", key)
+	glog.Infof("Processing schema : %v", key)
 
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -52,11 +64,13 @@ func (c *Controller) syncSchema(key string) error {
 			dsn, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.DsnFrom)
 			if err != nil {
 				if errors.IsNotFound(err) {
-					msg := fmt.Sprintf("waiting to get DSN for schema `%s` from secret `%s`", key, secretName)
+					msg := fmt.Sprintf(MessageDSNGetWaiting, key, secretName)
+					glog.Info(msg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
-				msg := fmt.Sprintf("failed to get valid DSN for schema `%s` from secret `%s`", key, secretName)
+				msg := fmt.Sprintf(MessageDSNGetFailure, key, secretName, err)
+				glog.Error(schemaStatusMsg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
 				return nil
@@ -65,6 +79,7 @@ func (c *Controller) syncSchema(key string) error {
 			db, err := c.dbsLister.Databases(namespace).Get(dbName)
 			if err != nil {
 				schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
+				glog.Error(schemaStatusMsg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 				return err
@@ -72,9 +87,10 @@ func (c *Controller) syncSchema(key string) error {
 
 			glog.V(4).Infof("Server type requested: %s", db.Spec.ServerType)
 			if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
-				schemaStatusMsg = fmt.Sprintf("unsupported database server type `%s`, the supported database is postgres", db.Spec.ServerType)
-				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-				err = fmt.Errorf(schemaStatusMsg)
+				msg := fmt.Sprintf("unsupported database server type `%s`, [postgres] supported", db.Spec.ServerType)
+				glog.Error(msg)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				err = fmt.Errorf(msg)
 				runtime.HandleError(err)
 				return err
 			}
@@ -82,11 +98,13 @@ func (c *Controller) syncSchema(key string) error {
 			dsn, err = c.getSecretByName(db.Namespace, "dsn", dbName)
 			if err != nil {
 				if errors.IsNotFound(err) {
-					msg := fmt.Sprintf("waiting to get DSN for schema `%s` from secret `%s`", key, dbName)
+					msg := fmt.Sprintf(MessageDSNGetWaiting, key, dbName)
+					glog.Info(msg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
-				msg := fmt.Sprintf("failed to get valid DSN for schema `%s` from secret `%s`", key, dbName)
+				msg := fmt.Sprintf(MessageDSNGetFailure, key, dbName, err)
+				glog.Error(msg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
 				return nil
@@ -103,10 +121,12 @@ func (c *Controller) syncSchema(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf("waiting to get gitURL for schema `%s` from secret `%s`", key, secretName)
+					glog.Info(schemaStatusMsg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("failed to get valid gitURL for schema `%s` from secret `%s`", key, secretName)
+				glog.Error(msg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
 				return nil
@@ -114,6 +134,7 @@ func (c *Controller) syncSchema(key string) error {
 
 		} else {
 			msg := fmt.Sprintf("failed to get valid gitURL for schema `%s`", key)
+			glog.Error(msg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 			err = fmt.Errorf(msg)
 			runtime.HandleError(err)
@@ -129,6 +150,7 @@ func (c *Controller) syncSchema(key string) error {
 		dbDriver, err = database.Open(dsn)
 		if err != nil {
 			schemaStatusMsg = fmt.Sprintf("failed to open dbconnection: %s", err)
+			glog.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 			err = fmt.Errorf(schemaStatusMsg)
 			runtime.HandleError(err)
@@ -140,6 +162,7 @@ func (c *Controller) syncSchema(key string) error {
 	mgrt, err := migrate.NewWithDatabaseInstance(gitURL, dbName, dbDriver)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
+		glog.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
@@ -152,16 +175,18 @@ func (c *Controller) syncSchema(key string) error {
 		if strings.Contains(errString, badConn) || strings.Contains(errString, connClosed) {
 			delete(dbDriverMap, dbKey)
 			schemaStatusMsg = fmt.Sprintf("database connection errorred: %s", err)
+			glog.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 			err = fmt.Errorf(schemaStatusMsg)
 			runtime.HandleError(err)
 			return err
 		} else if err == migrate.ErrNilVersion {
-			glog.Infof("database `%s` has no migration applied", dbName)
 			schemaStatusMsg = fmt.Sprintf("database `%s` has no migration applied", dbName)
+			glog.Infof(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
 		} else {
 			schemaStatusMsg = fmt.Sprintf("cannot get current database version: %s", err)
+			glog.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 			err = fmt.Errorf(schemaStatusMsg)
 			runtime.HandleError(err)
@@ -170,37 +195,35 @@ func (c *Controller) syncSchema(key string) error {
 	}
 	if dirt {
 		// TODO we might want to notficate someone about this
-		schemaStatusMsg = fmt.Sprintf("database `%s` (%s) is in dirty state (version is %d)", dbName, dsn, ver)
+		schemaStatusMsg = fmt.Sprintf("database `%s` is in dirty state (current version is %d)", dbName, ver)
+		glog.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
+
 	toVersion := uint(schema.Spec.Version)
 	if ver == toVersion {
-		glog.Infof("database `%s` has synced version %d", dbName, toVersion)
-		schemaStatusMsg = fmt.Sprintf("database `%s` has synced version %d", dbName, toVersion)
-		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
+		schemaStatusMsg = fmt.Sprintf("Databaseschema `%s` is in requested version %d", key, toVersion)
+		glog.Infof(schemaStatusMsg)
+		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
 		return nil
 	}
 
 	err = mgrt.Migrate(toVersion)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("cannot migrate the db %s : %s", dbName, err)
+		glog.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
 		err = fmt.Errorf(schemaStatusMsg)
 		runtime.HandleError(err)
 		return err
 	}
+	msg := fmt.Sprintf("Migration successful from version %d to %d", ver, toVersion)
+	c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, msg)
 
-	schemaStatusMsg := fmt.Sprintf("Successfully synced schema '%s'", key)
-	schema, err = c.updateDatabaseSchemaStatus(key, schema, StateSuccess, schemaStatusMsg)
-
-	if err != nil {
-		runtime.HandleError(err)
-		return err
-	}
-
+	c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
 	return nil
 }
 
@@ -223,15 +246,4 @@ func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.Databa
 	}
 	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus
 	return c.schemasLister.DatabaseSchemas(schema.Namespace).Get(schema.Name)
-}
-
-func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
-	var object metav1.Object
-	var ok bool
-	if object, ok = obj.(metav1.Object); !ok {
-		glog.Info("not enqueue schema object")
-		return
-	}
-	glog.Infof("enqueue schema object: %s", object.GetName())
-	c.enqueue(obj, c.schemaQueue)
 }

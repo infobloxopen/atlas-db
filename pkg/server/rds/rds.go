@@ -31,7 +31,7 @@ func (p *RDSPlugin) DatabasePlugin() plugin.DatabasePlugin {
 }
 
 func (p *RDSPlugin) Dsn(userName string, password string, db *atlas.Database, s *atlas.DatabaseServer) string {
-	return ""
+	return p.DatabasePlugin().Dsn(userName, password, nil, s)
 }
 
 func (p *RDSPlugin) SyncCloud(key string, s *atlas.DatabaseServer) error {

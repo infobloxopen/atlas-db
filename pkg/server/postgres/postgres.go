@@ -74,10 +74,13 @@ func (p *PostgresPlugin) Dsn(userName string, password string, db *atlas.Databas
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the DatabaseServer resource that 'owns' it.
 func (p *PostgresPlugin) CreatePod(key string, s *atlas.DatabaseServer) *corev1.Pod {
-	labels := map[string]string{
-		"controller":     s.Name,
-		"databaseserver": s.Name,
+	labels := s.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
 	}
+	labels["controller"] = s.Name
+	labels["databaseserver"] = s.Name
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      s.Name,

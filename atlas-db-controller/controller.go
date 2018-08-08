@@ -299,9 +299,11 @@ func (c *Controller) getSecretFromValueSource(namespace string, from *atlas.Valu
 }
 
 func (c *Controller) objMeta(o metav1.Object, kind string) metav1.ObjectMeta {
-	labels := map[string]string{
-		"controller": o.GetName(),
+	labels := o.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
 	}
+	labels["controller"] = o.GetName()
 	return metav1.ObjectMeta{
 		Name:      o.GetName(),
 		Namespace: o.GetNamespace(),

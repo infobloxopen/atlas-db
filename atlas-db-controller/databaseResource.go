@@ -126,12 +126,18 @@ func (c *Controller) syncDatabase(key string) error {
 	}
 
 	// Update dsn related to a database which databaseschema will use.
-	err = c.syncDatabaseSecret(key, dsn, db, s, p)
-	if err != nil {
-		msg := fmt.Sprintf("error syncing database secrets '%s': %s", key, err)
-		c.updateDatabaseStatus(key, db, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
-		return nil
+	for index, user := range db.Spec.Users {
+		if user.PasswordFrom != nil {
+			passwd, err := c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting for secret or configmap for %s", user.Name)
+					c.updateDatabaseStatus(key, db, StatePending, msg)
+					return err
+				}
+			}
+			db.Spec.Users[index].Password = passwd
+		}
 	}
 
 	err = p.SyncDatabase(db, dsn)
@@ -140,6 +146,14 @@ func (c *Controller) syncDatabase(key string) error {
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
 		return err
+	}
+
+	err = c.syncDatabaseSecret(key, dsn, db, s, p)
+	if err != nil {
+		msg := fmt.Sprintf("error syncing database secrets '%s': %s", key, err)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
+		return nil
 	}
 
 	msg := fmt.Sprintf("Successfully synced database '%s'", key)
@@ -159,29 +173,17 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 		glog.V(4).Info(" Database users not provided. Skip database secret creation")
 		return nil
 	}
-	secret, errs := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
+	secret, err := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
 
 	//TODO: check if the secret matches the spec and change it if not
 	//this will require additional support from the database plugin
 
 	// If the resource doesn't exist, we'll create it.
 	// TODO: creating dsn for admin user alone for now. non-admin users also we should create.
-	var err error
-	for index, user := range db.Spec.Users {
+	for _, user := range db.Spec.Users {
 		passwd := user.Password
 		if user.Role == "admin" {
-			if user.PasswordFrom != nil {
-				passwd, err = c.getSecretFromValueSource(db.Namespace, user.PasswordFrom)
-				if err != nil {
-					if errors.IsNotFound(err) {
-						msg := fmt.Sprintf("waiting for secret or configmap for %s", user.Name)
-						c.updateDatabaseStatus(key, db, StatePending, msg)
-						return err
-					}
-				}
-				db.Spec.Users[index].Password = passwd
-			}
-			if errors.IsNotFound(errs) {
+			if errors.IsNotFound(err) {
 				glog.V(4).Info("Database secrets not found. Creating...")
 				if dbServer != nil {
 					dsn = dbPlugin.Dsn(user.Name, passwd, db, dbServer)
@@ -206,8 +208,8 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
-	if errs != nil {
-		return errs
+	if err != nil {
+		return err
 	}
 
 	// If it is not controlled by this Database resource, we should log

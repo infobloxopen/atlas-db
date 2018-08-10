@@ -4,7 +4,7 @@ metadata:
   name: mydbserver
 spec:
   servicePort: 3306
-  port: 3306
+  superUser: "postgres"
   superUserPassword: "root"
   mySQL:
     image: mysql
@@ -22,14 +22,13 @@ spec:
     password: bar
     role: read
   serverType: mysql
-  dsn: "root:root@tcp(mydbserver.default:3306)/mysql?charset=utf8&parseTime=True"
-#  server: mydbserver
+  server: mydbserver
 ---
 apiVersion: atlasdb.infoblox.com/v1alpha1
 kind: DatabaseSchema
 metadata:
-  name: myappdb
+  name: myschema
 spec:
   database: mydb
-  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  git: github://<GITHUB USERNAME>:<GITHUB PASSWORD>@infobloxopen/atlas-contacts-app/db/migrations
   version: 001

@@ -4,7 +4,8 @@ metadata:
   name: mydbserver
 spec:
   servicePort: 5432
-  superUser: "postgres"
-  superUserPassword: "postgres"
-  postgres:
-    image: postgres
+  superUser: <USERNAME>
+  superUserPassword: <PASSWORD>
+  dbHost: <FQDN NAME>
+  rds:
+    engine: postgres

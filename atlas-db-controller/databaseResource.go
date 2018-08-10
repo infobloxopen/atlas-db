@@ -28,6 +28,7 @@ func (c *Controller) enqueueDatabase(obj interface{}) {
 }
 
 func (c *Controller) syncDatabase(key string) error {
+	glog.Infof("Processing database : %v", key)
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -42,15 +43,11 @@ func (c *Controller) syncDatabase(key string) error {
 			runtime.HandleError(fmt.Errorf("database '%s' in work queue no longer exists", key))
 			return nil
 		}
-
 		return err
 	}
 
 	if db.Status.State == "" {
-		db, err = c.updateDatabaseStatus(key, db, StatePending, "")
-		if err != nil {
-			return err
-		}
+		c.updateDatabaseStatus(key, db, StatePending, "Yet to initialize")
 	}
 
 	var p plugin.DatabasePlugin
@@ -62,6 +59,7 @@ func (c *Controller) syncDatabase(key string) error {
 		if err != nil {
 			if errors.IsNotFound(err) {
 				msg := fmt.Sprintf("waiting for database server '%s/%s'", namespace, db.Spec.Server)
+				glog.Info(msg)
 				c.updateDatabaseStatus(key, db, StatePending, msg)
 			} else {
 				runtime.HandleError(fmt.Errorf("error retrieving database server '%s' for database '%s': %s", db.Spec.Server, key, err))
@@ -74,6 +72,7 @@ func (c *Controller) syncDatabase(key string) error {
 	serverType := db.Spec.ServerType
 	if serverType == "" && s == nil {
 		msg := fmt.Sprintf("database '%s' has no serverType or server set", key)
+		glog.Error(msg)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
 		return nil
@@ -87,6 +86,7 @@ func (c *Controller) syncDatabase(key string) error {
 
 	if p == nil {
 		msg := fmt.Sprintf("database '%s' does not have a valid database plugin", key)
+		glog.Error(msg)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
 		return nil
@@ -101,10 +101,12 @@ func (c *Controller) syncDatabase(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf("waiting to get DSN for database `%s` from secret `%s`", key, secretName)
+					glog.Info(msg)
 					c.updateDatabaseStatus(key, db, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("failed to get valid DSN for database `%s` from secret `%s`", key, secretName)
+				glog.Error(msg)
 				c.updateDatabaseStatus(key, db, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
 				return nil
@@ -114,10 +116,12 @@ func (c *Controller) syncDatabase(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf("waiting to get DSN for database `%s` from secret `%s`", key, s.Name)
+					glog.Info(msg)
 					c.updateDatabaseStatus(key, db, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("failed to get valid DSN for database `%s` from secret `%s`", key, s.Name)
+				glog.Error(msg)
 				c.updateDatabaseStatus(key, db, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
 				return nil
@@ -143,10 +147,13 @@ func (c *Controller) syncDatabase(key string) error {
 	err = p.SyncDatabase(db, dsn)
 	if err != nil {
 		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
+		glog.Error(msg)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
+	msg := fmt.Sprintf("Database '%s' & users synced successfully", s.Name)
+	c.recorder.Event(db, corev1.EventTypeNormal, SuccessSynced, msg)
 
 	err = c.syncDatabaseSecret(key, dsn, db, s, p)
 	if err != nil {
@@ -156,15 +163,7 @@ func (c *Controller) syncDatabase(key string) error {
 		return nil
 	}
 
-	msg := fmt.Sprintf("Successfully synced database '%s'", key)
-	db, err = c.updateDatabaseStatus(key, db, StateSuccess, msg)
-	if err != nil {
-		runtime.HandleError(err)
-		return err
-	}
-
-	//TODO: Log some more events for troubleshoting
-	c.recorder.Event(db, corev1.EventTypeNormal, SuccessSynced, MessageDatabaseSynced)
+	c.updateDatabaseStatus(key, db, StateSuccess, fmt.Sprintf(MessageDatabaseSynced, key))
 	return nil
 }
 
@@ -174,9 +173,15 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 		return nil
 	}
 	secret, err := c.secretsLister.Secrets(db.Namespace).Get(db.Name)
-
 	//TODO: check if the secret matches the spec and change it if not
 	//this will require additional support from the database plugin
+	if err != nil && !errors.IsNotFound(err) {
+		msg := fmt.Sprintf("failed to get secret '%s': %s", key, err)
+		glog.Error(msg)
+		c.updateDatabaseStatus(key, db, StateError, msg)
+		runtime.HandleError(fmt.Errorf(msg))
+		return err
+	}
 
 	// If the resource doesn't exist, we'll create it.
 	// TODO: creating dsn for admin user alone for now. non-admin users also we should create.
@@ -190,7 +195,7 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 				} else {
 					customDbServer := &atlas.DatabaseServer{}
 					host, port := c.getHostAndPort(dsn)
-					customDbServer.Spec.Host = host
+					customDbServer.Spec.DBHost = host
 					customDbServer.Spec.ServicePort = port
 					dsn = dbPlugin.Dsn(user.Name, passwd, db, customDbServer)
 				}
@@ -201,28 +206,30 @@ func (c *Controller) syncDatabaseSecret(key, dsn string, db *atlas.Database, dbS
 						StringData: map[string]string{"dsn": dsn},
 					},
 				)
+				// If an error occurs during Create, we'll requeue the item so we can
+				// attempt processing again later.
+				if err != nil {
+					msg := fmt.Sprintf("failed to create secret '%s': %s", key, err)
+					glog.Error(msg)
+					c.updateDatabaseStatus(key, db, StateError, msg)
+					runtime.HandleError(fmt.Errorf(msg))
+					return err
+				}
+				c.recorder.Event(db, corev1.EventTypeNormal, StateCreated, fmt.Sprintf(MessageSecretCreated, secret.Name))
 			}
 		}
-	}
-
-	// If an error occurs during Get/Create, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
 	}
 
 	// If it is not controlled by this Database resource, we should log
 	// a warning to the event recorder and ret
 	if !metav1.IsControlledBy(secret, db) {
 		msg := fmt.Sprintf(MessageSecretExists, secret.Name)
+		glog.Info(msg)
 		c.recorder.Event(db, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
 
 	// TODO: compare existing to spec and reconcile
-
-	// TODO: Update status
 	return nil
 }
 

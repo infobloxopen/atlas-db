@@ -95,7 +95,7 @@ Following section describes the custom resources created and managed by atlas-db
 ### Database Servers
 
 Database Server resource is used manage the lifecycle of a database server instance. Currently
-supported databases are Postgres & MySQL. *RDS instances is under development.*
+supported databases are Postgres & MySQL. *RDS DB servers are planned to provision manually.*
 
 #### Pod-Based Servers
 
@@ -145,7 +145,33 @@ spec:
     image: mysql
 ```
 
-#### Cloud Servers ( **WIP** )
+#### Cloud Servers
+**NOTE: RDS database server needs to be provisioned manually and user should get login credentials.**
+
+
+When using External Database server or RDS database instance user need to create a
+database server resource in Kubernetes cluster which will create an external service
+referring to External Database server or RDS database instance.
+
+These will result in the creation of 2 resources:
+
+- A Externalname `Service` with the same name as the `DatabaseServer` resource.
+- A `Secret` with the DSN to connect as super-user to the database.
+
+```
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 5432
+  superUser: "postgres"
+  superUserPassword: "postgres"
+  dbHost: "aws.rds.db.instance.infoblox.com"
+  rds:
+    engine: postgres
+```
+
 
 ### Databases
 
@@ -177,37 +203,6 @@ spec:
   serverType: postgres
 ```
 
-If user do not use a `DatabaseServer` to provision the server and wish to connect to remote
-database server:
-
-```
-apiVersion: atlasdb.infoblox.com/v1alpha1
-kind: Database
-metadata:
-  name: mydb
-spec:
-  users:
-  - name: mydb
-    password: foo
-    role: read
-  - name: mydbadmin
-    passwordFrom:
-      secretKeyRef:
-        name: mydbsecrets
-        key: adminpw
-  dsnFrom:
-    secretKeyRef:
-      name: mysecrets
-      key: dsn
-  serverType: postgres
-```
-
-In development environment `dsnFrom` can be replaced with `dsn` as below
-
-```
-dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
-```
-
 ### Database Schemas
 
 Database Schema resource is used to manage the lifecycle of the schemas within a database.
@@ -225,33 +220,7 @@ spec:
   version: 001
 ```
 
-Alternatively, if user has created the database manually, they can explicitly mention
-database connection details using `dsn`. They should not specify database in that case.
-
-```
-apiVersion: atlasdb.infoblox.com/v1alpha1
-kind: DatabaseSchema
-metadata:
-  name: myschema
-spec:
-  dsnFrom:
-    secretKeyRef:
-      name: mydbcreds
-      key: dsn
-  gitFrom:
-    secretKeyRef:
-      name: mydbcreds
-      key: gitURL
-  version: 001
-```
-
-In development environment `dsnFrom` can be replaced with `dsn` and `gitFrom` can be
-replaced by `git` as below
-
-```
-dsn: postgres://postgres:postgres@localhost:5432/postgres
-git: github://<github_user>:<github_token_or_password>@infobloxopen/atlas-contacts-app/db/migrations
-```
+User can use `gitFrom` as an alternate to `git` to secure the credentials.
 
 ## Additional details
 

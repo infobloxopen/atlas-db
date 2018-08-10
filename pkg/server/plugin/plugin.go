@@ -1,10 +1,10 @@
 package plugin
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"strings"
 
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Plugin should be implemented by all plugins
@@ -58,7 +58,4 @@ func AddMount(c *corev1.Container, name string, ro bool, path string) {
 			ReadOnly:  ro,
 			MountPath: path,
 		})
-}
-
-func GetDsn(d *atlas.Database) {
 }

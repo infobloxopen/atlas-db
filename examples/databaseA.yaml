@@ -4,4 +4,11 @@ metadata:
   name: mydb
 spec:
   serverType: postgres
-  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+  server: mydbserver
+  users:
+  - name: admin
+    password: admin
+    role: admin
+  - name: you
+    password: bar
+    role: read

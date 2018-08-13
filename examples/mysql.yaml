@@ -29,5 +29,5 @@ metadata:
   name: myschema
 spec:
   database: mydb
-  git: github://<GITHUB USERNAME>:<GITHUB PASSWORD>@infobloxopen/atlas-contacts-app/db/migrations
+  source: github://<GITHUB USERNAME>:<GITHUB PASSWORD>@infobloxopen/atlas-contacts-app/db/migrations
   version: 001

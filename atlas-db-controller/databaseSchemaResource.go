@@ -102,20 +102,20 @@ func (c *Controller) syncSchema(key string) error {
 		}
 	}
 
-	// Formulate gitURL from either git string or secret provided
-	gitURL := schema.Spec.Git
-	if gitURL == "" {
-		if schema.Spec.GitFrom != nil {
-			secretName := schema.Spec.GitFrom.SecretKeyRef.Name
-			gitURL, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.GitFrom)
+	// Formulate sourceURL from either source string or secret provided
+	sourceURL := schema.Spec.Source
+	if sourceURL == "" {
+		if schema.Spec.SourceFrom != nil {
+			secretName := schema.Spec.SourceFrom.SecretKeyRef.Name
+			sourceURL, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.SourceFrom)
 			if err != nil {
 				if errors.IsNotFound(err) {
-					msg := fmt.Sprintf("waiting to get gitURL for schema `%s` from secret `%s`", key, secretName)
+					msg := fmt.Sprintf("waiting to get sourceURL for schema `%s` from secret `%s`", key, secretName)
 					glog.Info(schemaStatusMsg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
-				msg := fmt.Sprintf("failed to get valid gitURL for schema `%s` from secret `%s`", key, secretName)
+				msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s` from secret `%s`", key, secretName)
 				glog.Error(msg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 				runtime.HandleError(fmt.Errorf(msg))
@@ -123,7 +123,7 @@ func (c *Controller) syncSchema(key string) error {
 			}
 
 		} else {
-			msg := fmt.Sprintf("failed to get valid gitURL for schema `%s`", key)
+			msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s`", key)
 			glog.Error(msg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
 			err = fmt.Errorf(msg)
@@ -149,7 +149,7 @@ func (c *Controller) syncSchema(key string) error {
 		dbDriverMap[dbKey] = dbDriver
 	}
 
-	mgrt, err := migrate.NewWithDatabaseInstance(gitURL, dbName, dbDriver)
+	mgrt, err := migrate.NewWithDatabaseInstance(sourceURL, dbName, dbDriver)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
 		glog.Error(schemaStatusMsg)

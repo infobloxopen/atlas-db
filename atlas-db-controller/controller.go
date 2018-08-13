@@ -23,7 +23,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
+	// load migration drivers
 	_ "github.com/golang-migrate/migrate/database/postgres"
+	_ "github.com/golang-migrate/migrate/source/aws_s3"
 	_ "github.com/golang-migrate/migrate/source/github"
 
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"

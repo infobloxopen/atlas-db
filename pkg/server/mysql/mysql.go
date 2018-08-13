@@ -128,22 +128,22 @@ func (p *MySQLPlugin) DiffPod(key string, s *atlas.DatabaseServer, pod *corev1.P
 	return strings.Join(diffs, "; ")
 }
 
-func (p *MySQLPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
+func (p *MySQLPlugin) SyncDatabase(db *atlas.Database, dsn string) (string, error) {
 	// connect
 	sqldb, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// check if it exists; if not create it
 	ddl := fmt.Sprintf("create database if not exists `%s`", db.Name)
 	_, err = sqldb.Exec(ddl)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// check if users exist; verify their passwords and roles
 	// check if other users exist; delete if necessary
 
-	return nil
+	return "Created", nil
 }
 
 func (p *MySQLPlugin) DeleteDatabase(db *atlas.Database) error {

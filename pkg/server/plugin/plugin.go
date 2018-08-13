@@ -26,7 +26,7 @@ type PodPlugin interface {
 }
 
 type DatabasePlugin interface {
-	SyncDatabase(*atlas.Database, string) error
+	SyncDatabase(*atlas.Database, string) (string, error)
 	Dsn(string, string, *atlas.Database, *atlas.DatabaseServer) string
 }
 

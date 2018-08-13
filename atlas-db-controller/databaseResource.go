@@ -144,7 +144,7 @@ func (c *Controller) syncDatabase(key string) error {
 		}
 	}
 
-	err = p.SyncDatabase(db, dsn)
+	state, err := p.SyncDatabase(db, dsn)
 	if err != nil {
 		msg := fmt.Sprintf("error syncing database '%s': %s", key, err)
 		glog.Error(msg)
@@ -152,8 +152,10 @@ func (c *Controller) syncDatabase(key string) error {
 		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
-	msg := fmt.Sprintf("Database '%s' & users synced successfully", s.Name)
-	c.recorder.Event(db, corev1.EventTypeNormal, SuccessSynced, msg)
+	if state == StateCreated {
+		msg := fmt.Sprintf("Database %q & Users created successfully", s.Name)
+		c.recorder.Event(db, corev1.EventTypeNormal, StateCreated, msg)
+	}
 
 	err = c.syncDatabaseSecret(key, dsn, db, s, p)
 	if err != nil {

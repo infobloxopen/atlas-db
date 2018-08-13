@@ -21,7 +21,6 @@ spec:
   - name: you
     password: bar
     role: read
-  serverType: mysql
   server: mydbserver
 ---
 apiVersion: atlasdb.infoblox.com/v1alpha1

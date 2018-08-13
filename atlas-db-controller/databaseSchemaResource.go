@@ -85,16 +85,6 @@ func (c *Controller) syncSchema(key string) error {
 				return err
 			}
 
-			glog.V(4).Infof("Server type requested: %s", db.Spec.ServerType)
-			if db.Spec.ServerType != "postgres" { //  && db.Spec.ServerType != ...
-				msg := fmt.Sprintf("unsupported database server type `%s`, [postgres] supported", db.Spec.ServerType)
-				glog.Error(msg)
-				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-				err = fmt.Errorf(msg)
-				runtime.HandleError(err)
-				return err
-			}
-
 			dsn, err = c.getSecretByName(db.Namespace, "dsn", dbName)
 			if err != nil {
 				if errors.IsNotFound(err) {

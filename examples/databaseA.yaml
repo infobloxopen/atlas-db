@@ -3,7 +3,6 @@ kind: Database
 metadata:
   name: mydb
 spec:
-  serverType: postgres
   server: mydbserver
   users:
   - name: admin

@@ -144,40 +144,40 @@ func (p *PostgresPlugin) DiffPod(key string, s *atlas.DatabaseServer, pod *corev
 	return strings.Join(diffs, "; ")
 }
 
-func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) error {
+func (p *PostgresPlugin) SyncDatabase(db *atlas.Database, dsn string) (string, error) {
 	// connect
 	sqldb, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer sqldb.Close()
 	// check if it exists; if not create it
 	rows, err := sqldb.Query(`SELECT 1 FROM pg_database WHERE datname=$1`, db.Name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer rows.Close()
 	if rows.Next() {
 		glog.V(4).Infof("Database %s exists", db.Name)
 		err = checkUsers(db, sqldb)
 		if err != nil {
-			return err
+			return "", err
 		}
-		return nil
+		return "SuccessSynced", nil
 	}
 	glog.V(4).Info("creating database ", db.Name)
 	ddl := fmt.Sprintf(`create database "%s"`, db.Name)
 	_, err = sqldb.Exec(ddl)
 	if err != nil {
-		return err
+		return "", err
 	}
 	for _, user := range db.Spec.Users {
 		err = createuser(user.Name, user.Role, user.Password, sqldb)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return "Created", nil
 }
 
 func (p *PostgresPlugin) DeleteDatabase(db *atlas.Database) error {

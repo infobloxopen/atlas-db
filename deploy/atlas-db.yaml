@@ -65,3 +65,6 @@ spec:
           - "-resync=1m"
           - "-logtostderr"
           - "-v=4"
+        env:
+          - name: AWS_REGION
+            value: "us-east-1"

@@ -12,9 +12,9 @@ It manages 3 types of resources:
   - Database Schemas
 
 The `DatabaseServer` resource will instantiate a database server and create a `Secret`
-that contains the DSN to connect to the database as the super user.
+that contains the DSN to connect to the database instance as the super user.
 
-This secret is then used by the `Database` resource, which will create a specific
+This secret is then used by the `Database` resource, which will create specific
 application database on that server, along with users and associated `Secrets` as defined
 in the spec. **At least one user with administrative access to the database is required.**
 
@@ -25,7 +25,7 @@ resource to install and maintain a specific version of the database schema.
    - Kubernetes cluster version should be > 1.9
    - Migration/Initialization scripts should comply with [these](https://github.com/golang-migrate/migrate/blob/master/MIGRATIONS.md) guidelines.
    - To access gitHub source need user's **personal access tokens**
-   - Currently `GitHub` is the only supported source for migration scripts.
+   - `GitHub` and `AWS S3` are the only supported source for migration scripts.
    - Current end to end support for Postgres database only.
 
 ## Custom Resources and Controller deployment
@@ -71,7 +71,7 @@ args:
   - "-l=monitor=atlas-deployment-1"
 ```
 
-For LabelSelector to work as intended, resources should have proper labelling.
+For LabelSelector option to work as intended, resources should have proper labelling.
 ```
 <!--
 dbserverA.yaml
@@ -94,8 +94,7 @@ Following section describes the custom resources created and managed by atlas-db
 
 ### Database Servers
 
-Database Server resource is used manage the lifecycle of a database server instance. Currently
-supported databases are Postgres & MySQL. *RDS DB servers are planned to provision manually.*
+Database Server resource is used manage the lifecycle of a database server instance. *RDS DB servers are planned to provision manually.*
 
 #### Pod-Based Servers
 
@@ -216,15 +215,15 @@ metadata:
   name: myschema
 spec:
   database: mydb
-  git: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
+  source: github://iburak-infoblox:<place password or oauth token here>@infobloxopen/atlas-contacts-app/db/migrations
   version: 001
 ```
 
-User can use `gitFrom` as an alternate to `git` to secure the credentials.
+User can use `sourceFrom` as an alternate to `source` to secure the credentials.
 
 ## Additional details
 
-### construct of GitHub url
+### construct of GitHub url as a Source
 
 `github://user:personal-access-token@owner/repo/path#ref`
 
@@ -237,8 +236,17 @@ User can use `gitFrom` as an alternate to `git` to secure the credentials.
 | path | Path in the git repository to migrations |
 | ref | **(optional)** can be a SHA, branch, or tag |
 
+### construct of S3 Url as a Source
 
-### Steps to create kubernetes secrets to secure (passwords, dsn, gitURL)
+`s3://<bucket-name>/<prefix>`
+
+| URL Query | Description |
+|-----------|-------------|
+| bucket-name | name of the bucket in which migration file lives. |
+| prefix | **(optional)** Limits the response to keys that begin with the specified prefix. |
+
+
+### Steps to create kubernetes secrets to secure (passwords, dsn, sourceURL)
 
 Assume 'infoblox@123' is the password for admin user.
 

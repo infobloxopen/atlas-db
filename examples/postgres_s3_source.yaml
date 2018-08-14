@@ -1,0 +1,33 @@
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseServer
+metadata:
+  name: mydbserver
+spec:
+  servicePort: 5432
+  superUser: "postgres"
+  superUserPassword: "postgres"
+  postgres:
+    image: postgres
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: Database
+metadata:
+  name: myappdb
+spec:
+  users:
+  - name: admin
+    password: admin
+    role: admin
+  - name: you
+    password: bar
+    role: read
+  server: mydbserver
+---
+apiVersion: atlasdb.infoblox.com/v1alpha1
+kind: DatabaseSchema
+metadata:
+  name: myappschema
+spec:
+  database: myappdb
+  source: s3://infobloxopen/atlas-contacts-app/migration    # s3://<bucket_name>/<prefix>
+  version: 001

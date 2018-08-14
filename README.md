@@ -199,7 +199,6 @@ spec:
         name: mydbsecrets
         key: adminpw
   server: mydbserver
-  serverType: postgres
 ```
 
 ### Database Schemas

@@ -34,6 +34,50 @@ func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
 	c.enqueue(obj, c.schemaQueue)
 }
 
+func (c *Controller) enqueueDatabaseSchemaDeleted(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		glog.Info("not enqueue schema deleted object")
+		return
+	}
+	glog.Infof("enqueue schema deleted object: %s", object.GetName())
+	c.schemaDeletedQ.AddRateLimited(obj)
+}
+
+func (c *Controller) getSourceURL(schema *atlas.DatabaseSchema) (string, error) {
+	sourceURL := schema.Spec.Source
+	if sourceURL == "" {
+		var err error
+		key := schema.Name
+		if schema.Spec.SourceFrom != nil {
+			secretName := schema.Spec.SourceFrom.SecretKeyRef.Name
+			sourceURL, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.SourceFrom)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					msg := fmt.Sprintf("waiting to get sourceURL for schema `%s` from secret `%s`", key, secretName)
+					glog.Info(schemaStatusMsg)
+					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
+					return sourceURL, err
+				}
+				msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s` from secret `%s`", key, secretName)
+				glog.Error(msg)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				runtime.HandleError(fmt.Errorf(msg))
+				return sourceURL, nil
+			} else {
+				msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s`", key)
+				glog.Error(msg)
+				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
+				err = fmt.Errorf(msg)
+				runtime.HandleError(err)
+				return sourceURL, err
+			}
+		}
+	}
+	return sourceURL, nil
+}
+
 func (c *Controller) syncSchema(key string) error {
 	glog.Infof("Processing schema : %v", key)
 
@@ -102,34 +146,10 @@ func (c *Controller) syncSchema(key string) error {
 		}
 	}
 
-	// Formulate sourceURL from either source string or secret provided
-	sourceURL := schema.Spec.Source
-	if sourceURL == "" {
-		if schema.Spec.SourceFrom != nil {
-			secretName := schema.Spec.SourceFrom.SecretKeyRef.Name
-			sourceURL, err = c.getSecretFromValueSource(schema.Namespace, schema.Spec.SourceFrom)
-			if err != nil {
-				if errors.IsNotFound(err) {
-					msg := fmt.Sprintf("waiting to get sourceURL for schema `%s` from secret `%s`", key, secretName)
-					glog.Info(schemaStatusMsg)
-					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
-					return err
-				}
-				msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s` from secret `%s`", key, secretName)
-				glog.Error(msg)
-				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
-				return nil
-			}
-
-		} else {
-			msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s`", key)
-			glog.Error(msg)
-			c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-			err = fmt.Errorf(msg)
-			runtime.HandleError(err)
-			return err
-		}
+	// Formulate gitURL from either git string or secret provided
+	sourceURL, err := c.getSourceURL(schema)
+	if err != nil {
+		return err
 	}
 
 	// migrate package is not closing the dbconnnection so using a local cache reuse dbconnection.
@@ -214,6 +234,33 @@ func (c *Controller) syncSchema(key string) error {
 	c.recorder.Event(schema, corev1.EventTypeNormal, SuccessSynced, msg)
 
 	c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
+	return nil
+}
+
+func (c *Controller) syncSchemaDeleted(obj interface{}) error {
+	// We assume that the required fields will already be populated while creating the
+	// resource. Also, we are working on events while resource already deleted so not
+	// updating status of DELETED resource.
+	schemaObj := obj.(*atlas.DatabaseSchema)
+	dbName := schemaObj.Spec.Database
+	db_key := schemaObj.Namespace + "." + schemaObj.Name
+	dbDriver := dbDriverMap[db_key]
+	sourceURL, err := c.getSourceURL(schemaObj)
+	if err != nil {
+		return err
+	}
+	mgrt, err := migrate.NewWithDatabaseInstance(sourceURL, dbName, dbDriver)
+	if err != nil {
+		runtime.HandleError(err)
+		return err
+	}
+	err = mgrt.Down()
+	if err != nil {
+		runtime.HandleError(err)
+		return err
+	}
+	// finally delete the connection from local cache
+	delete(dbDriverMap, db_key)
 	return nil
 }
 

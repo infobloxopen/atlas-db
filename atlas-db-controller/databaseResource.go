@@ -27,6 +27,17 @@ func (c *Controller) enqueueDatabase(obj interface{}) {
 	c.enqueue(obj, c.dbQueue)
 }
 
+func (c *Controller) enqueueDatabaseDeleted(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		glog.Info("not enqueue database deleted object")
+		return
+	}
+	glog.Infof("enqueue database deleted object: %s", object.GetName())
+	c.schemaDeletedQ.AddRateLimited(obj)
+}
+
 func (c *Controller) syncDatabase(key string) error {
 	glog.Infof("Processing database : %v", key)
 	// Convert the namespace/name string into a distinct namespace and name
@@ -166,6 +177,10 @@ func (c *Controller) syncDatabase(key string) error {
 	}
 
 	c.updateDatabaseStatus(key, db, StateSuccess, fmt.Sprintf(MessageDatabaseSynced, key))
+	return nil
+}
+
+func (c *Controller) syncDatabaseDeleted(obj interface{}) error {
 	return nil
 }
 

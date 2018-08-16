@@ -44,16 +44,11 @@ const (
 	// to sync due to a resource it should own already existing
 	ErrResourceExists = "ErrResourceExists"
 
-	MessageServiceExists  = "Service %q already exists and is not managed by DatabaseServer"
-	MessageSecretExists   = "Secret %q already exists and is not managed by DatabaseServer"
-	MessagePodExists      = "Pod %q already exists and is not managed by DatabaseServer"
-	MessageServerSynced   = "DatabaseServer %q synced successfully"
-	MessageDatabaseSynced = "Database %q synced successfully"
-	MessageSchemaSynced   = "DatabaseSchema %q synced successfully"
+	MessageSecretExists = "Secret (%q) already exists and is not managed by DatabaseServer"
 
-	MessageServiceCreated = "Service %q created successfully"
-	MessageSecretCreated  = "Secret %q created successfully"
-	MessagePodCreated     = "Pod %q created successfully"
+	MessageServiceCreated = "Service (%q) created successfully"
+	MessageSecretCreated  = "Secret (%q) created successfully"
+	MessagePodCreated     = "Pod (%q) created successfully"
 
 	StateCreated  = "Created"
 	StateDeleting = "Deleting"
@@ -62,8 +57,8 @@ const (
 	StateSuccess  = "Success"
 	StateUpdating = "Updating"
 
-	MessageDSNGetFailure = "failed to get DSN for %q from secret %q : %q"
-	MessageDSNGetWaiting = "waiting to get DSN for %q from secret %q"
+	MessageDSNGetFailure = "failed to get DSN for (%q) from secret (%q): %q"
+	MessageDSNGetWaiting = "waiting to get DSN for (%q) from secret (%q)"
 )
 
 var schemaStatusMsg string

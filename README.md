@@ -283,3 +283,23 @@ default namespace.
 ```
 kubectl create secret -n default generic mydbsecrets --from-file=/tmp/dsn
 ```
+## FAQ
+
+Q: How can I connect to database created by atlas-db from an application?
+
+A: In application deployment file, provide the dsn secret name with the same name as database resource.
+For eg.
+```
+spec:
+      containers:
+      - name: server
+        env:
+        - name: dsn
+          valueFrom:
+            secretKeyRef:
+              name: mydb
+              key: dsn
+        args:
+        - "-db=$(dsn)"
+```
+Here it is given as "mydb", replace it with your database resource name.

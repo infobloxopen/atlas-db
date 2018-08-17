@@ -220,6 +220,8 @@ spec:
 
 User can use `sourceFrom` as an alternate to `source` to secure the credentials.
 
+**NOTE: Need to use different names for resources database server, database and database schema. If same name given for all the resources, will get this error "secret already exists".**
+
 ## Additional details
 
 ### construct of GitHub url as a Source

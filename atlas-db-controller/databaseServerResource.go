@@ -3,14 +3,12 @@ package main
 import (
 	"fmt"
 
-	"github.com/golang/glog"
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	"github.com/infobloxopen/atlas-db/pkg/server"
 	"github.com/infobloxopen/atlas-db/pkg/server/plugin"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -18,10 +16,10 @@ func (c *Controller) enqueueDatabaseServer(obj interface{}) {
 	var object metav1.Object
 	var ok bool
 	if object, ok = obj.(metav1.Object); !ok {
-		glog.Info("not enqueue server object")
+		c.logger.Debug("not enqueue server object")
 		return
 	}
-	glog.Infof("enqueue server object: %s", object.GetName())
+	c.logger.Infof("enqueue server object: %s", object.GetName())
 	c.enqueue(obj, c.serverQueue)
 }
 
@@ -29,11 +27,11 @@ func (c *Controller) enqueueDatabaseServer(obj interface{}) {
 // converge the two. It then updates the Status block of the DatabaseServer resource
 // with the current status of the resource.
 func (c *Controller) syncServer(key string) error {
-	glog.Infof("Processing database server : %v", key)
+	c.logger.Infof("Processing database server : %v", key)
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		c.logger.Errorf("invalid resource key: %s", key)
 		return nil
 	}
 
@@ -42,7 +40,7 @@ func (c *Controller) syncServer(key string) error {
 	if err != nil {
 		// The DatabaseServer resource may no longer exist, in which case we stop processing.
 		if errors.IsNotFound(err) {
-			runtime.HandleError(fmt.Errorf("databaseserver '%s' in work queue no longer exists", key))
+			c.logger.Warningf("databaseserver '%s' in work queue no longer exists", key)
 			return nil
 		}
 		return err
@@ -50,16 +48,15 @@ func (c *Controller) syncServer(key string) error {
 
 	p := server.ActivePlugin(s)
 
-	glog.V(4).Infof("DatabaseServer %s has plugin type: %T", key, p)
+	c.logger.Debugf("DatabaseServer %s has plugin type: %T", key, p)
 	err = fmt.Errorf("databaseserver '%s' has an unimplemented plugin type", key)
 
 	if pp, ok := p.(plugin.PodPlugin); ok {
 		err = c.syncPodServer(pp, key, s)
 		if err != nil {
 			msg := fmt.Sprintf("error syncing server pod '%s': %s", key, err)
-			glog.Error(msg)
+			c.logger.Error(msg)
 			c.updateDatabaseServerStatus(key, s, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
 			return err
 		}
 	}
@@ -75,18 +72,16 @@ func (c *Controller) syncServer(key string) error {
 	err = c.syncService(key, s)
 	if err != nil {
 		msg := fmt.Sprintf("error syncing service '%s': %s", key, err)
-		glog.Error(msg)
+		c.logger.Error(msg)
 		c.updateDatabaseServerStatus(key, s, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
 	err = c.syncServerSecret(key, s)
 	if err != nil {
 		msg := fmt.Sprintf("error syncing server secret '%s': %s", key, err)
-		glog.Error(msg)
+		c.logger.Error(msg)
 		c.updateDatabaseServerStatus(key, s, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
@@ -103,9 +98,8 @@ func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error
 	// temporary network failure, or any other transient reason.
 	if err != nil && !errors.IsNotFound(err) {
 		msg := fmt.Sprintf("failed to get secret '%s': %s", key, err)
-		glog.Error(msg)
+		c.logger.Error(msg)
 		c.updateDatabaseServerStatus(key, s, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
@@ -114,21 +108,20 @@ func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error
 
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
-		glog.V(4).Infof("Database Server secret not found for %s. Creating...", key)
+		c.logger.Infof("Database Server secret not found for %s. Creating...", key)
 		su := s.Spec.SuperUser
 		if su == "" {
 			su, err = c.getSecretFromValueSource(s.Namespace, s.Spec.SuperUserFrom)
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := "waiting for secret or configmap for superUser"
-					glog.Info(msg)
+					c.logger.Debug(msg)
 					c.updateDatabaseServerStatus(key, s, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("databaseserver '%s' has no valid superUser or source", key)
-				glog.Error(msg)
+				c.logger.Error(msg)
 				c.updateDatabaseServerStatus(key, s, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
 				return nil
 			}
 		}
@@ -139,14 +132,13 @@ func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := "waiting for secret or configmap for superUserPassword"
-					glog.Info(msg)
+					c.logger.Debug(msg)
 					c.updateDatabaseServerStatus(key, s, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("databaseserver '%s' has no valid superUserPassword or source", key)
-				glog.Error(msg)
+				c.logger.Error(msg)
 				c.updateDatabaseServerStatus(key, s, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
 				return nil
 			}
 		}
@@ -162,9 +154,8 @@ func (c *Controller) syncServerSecret(key string, s *atlas.DatabaseServer) error
 		// attempt processing again later.
 		if err != nil {
 			msg := fmt.Sprintf("failed to create secret '%s': %s", key, err)
-			glog.Error(msg)
+			c.logger.Error(msg)
 			c.updateDatabaseServerStatus(key, s, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
 			return err
 		}
 		c.recorder.Event(s, corev1.EventTypeNormal, StateCreated, fmt.Sprintf(MessageSecretCreated, secret.Name))
@@ -190,9 +181,8 @@ func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
 	// temporary network failure, or any other transient reason.
 	if err != nil && !errors.IsNotFound(err) {
 		msg := fmt.Sprintf("failed to get service '%s': %s", key, err)
-		glog.Error(msg)
+		c.logger.Error(msg)
 		c.updateDatabaseServerStatus(key, s, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
@@ -214,7 +204,7 @@ func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
 					},
 				},
 			}
-			glog.V(4).Info("Creating service with type ClusterIP")
+			c.logger.Debug("Creating service with type ClusterIP")
 		} else {
 			spec = corev1.Service{
 				ObjectMeta: c.objMeta(s, "DatabaseServer"),
@@ -223,14 +213,13 @@ func (c *Controller) syncService(key string, s *atlas.DatabaseServer) error {
 					ExternalName: s.Spec.DBHost,
 				},
 			}
-			glog.V(4).Info("Creating service with type ExternalName")
+			c.logger.Debug("Creating service with type ExternalName")
 		}
 		svc, err = c.kubeclientset.CoreV1().Services(s.Namespace).Create(&spec)
 		if err != nil {
 			msg := fmt.Sprintf("failed to create service '%s': %s", key, err)
-			glog.Error(msg)
+			c.logger.Error(msg)
 			c.updateDatabaseServerStatus(key, s, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
 			return err
 		}
 		c.recorder.Event(s, corev1.EventTypeNormal, StateCreated, fmt.Sprintf(MessageServiceCreated, svc.Name))
@@ -256,9 +245,8 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 	// temporary network failure, or any other transient reason.
 	if err != nil && !errors.IsNotFound(err) {
 		msg := fmt.Sprintf("failed to get pod '%s': %s", key, err)
-		glog.Error(msg)
+		c.logger.Error(msg)
 		c.updateDatabaseServerStatus(key, s, StateError, msg)
-		runtime.HandleError(fmt.Errorf(msg))
 		return err
 	}
 
@@ -267,9 +255,8 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 		pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Create(p.CreatePod(key, s))
 		if err != nil {
 			msg := fmt.Sprintf("failed to create pod '%s': %s", key, err)
-			glog.Error(msg)
+			c.logger.Error(msg)
 			c.updateDatabaseServerStatus(key, s, StateError, msg)
-			runtime.HandleError(fmt.Errorf(msg))
 			return err
 		}
 		c.recorder.Event(s, corev1.EventTypeNormal, StateCreated, fmt.Sprintf(MessagePodCreated, pod.Name))
@@ -288,7 +275,7 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 		   // Update the pod resource to match the spec
 		   diffs := p.DiffPod(s)
 		   if diffs != "" {
-		       glog.V(4).Infof("DatabaseServer %s needs update: %s", diffs)
+		       c.logger.Debugf("DatabaseServer %s needs update: %s", diffs)
 		       pod, err = c.kubeclientset.CoreV1().Pods(s.Namespace).Update(p.CreatePod(key, s))
 		   }
 
@@ -313,7 +300,7 @@ func (c *Controller) updateDatabaseServerStatus(key string, s *atlas.DatabaseSer
 	// nothing other than resource status has been updated.
 	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseServers(s.Namespace).Update(copy)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database server '%s': %s", state, key, err))
+		c.logger.Warningf("error updating status to '%s' for database server '%s': %s", state, key, err)
 		return s, err
 	}
 	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus

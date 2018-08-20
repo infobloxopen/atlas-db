@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/sirupsen/logrus"
 	//appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,16 +91,13 @@ type Controller struct {
 	schemaQueue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
+	logger   *logrus.Logger
 }
 
 type syncHandler func(string) error
 
 // NewController returns a new atlas DB controller
-func NewController(
-	kubeclientset kubernetes.Interface,
-	atlasclientset clientset.Interface,
-	kubeInformerFactory kubeinformers.SharedInformerFactory,
-	atlasInformerFactory informers.SharedInformerFactory) *Controller {
+func NewController(kubeclientset kubernetes.Interface, atlasclientset clientset.Interface, kubeInformerFactory kubeinformers.SharedInformerFactory, atlasInformerFactory informers.SharedInformerFactory, logger *logrus.Logger) *Controller {
 
 	// obtain references to shared index informers for Secrets
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
@@ -114,9 +111,9 @@ func NewController(
 	// Add atlas-db-controller types to the default Kubernetes Scheme so Events can be
 	// logged for atlas-db-controller types.
 	atlasscheme.AddToScheme(scheme.Scheme)
-	glog.V(4).Info("Creating event broadcaster")
+	logger.Debug("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartLogging(logger.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
@@ -140,9 +137,10 @@ func NewController(
 		schemaQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DatabaseSchemas"),
 
 		recorder: recorder,
+		logger:   logger,
 	}
 
-	glog.Info("Setting up event handlers")
+	logger.Debug("Setting up event handlers")
 	// Set up an event handler for when DatabaseServer resources change
 	serverInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueDatabaseServer,
@@ -202,15 +200,15 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	defer c.schemaQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	glog.Info("Starting atlas-db-controller")
+	c.logger.Info("Starting atlas-db-controller")
 
 	// Wait for the caches to be synced before starting workers
-	glog.Info("Waiting for informer caches to sync")
+	c.logger.Debug("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.serversSynced, c.dbsSynced, c.servicesSynced, c.secretsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	glog.Info("Starting workers...")
+	c.logger.Info("Starting workers...")
 	// Launch two workers to process each resource in the group
 	for i := 0; i < threadiness; i++ {
 		// TODO make sure to do not try run all of three once per second on excatly the same moment
@@ -219,9 +217,9 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 		go wait.Until(c.runSchemaWorker, time.Second, stopCh)
 	}
 
-	glog.Info("Started workers")
+	c.logger.Info("Started workers")
 	<-stopCh
-	glog.Info("Shutting down workers")
+	c.logger.Info("Shutting down workers")
 
 	return nil
 }
@@ -271,12 +269,13 @@ func (c *Controller) processNextWorkItem(q workqueue.RateLimitingInterface, sync
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		q.Forget(obj)
-		glog.Infof("Successfully synced '%s'", key)
+		c.logger.Infof("Successfully synced '%s'", key)
 		return nil
 	}(obj)
 
 	if err != nil {
-		runtime.HandleError(err)
+		c.logger.Error(err)
+		//runtime.HandleError(err)
 		return true
 	}
 
@@ -353,14 +352,14 @@ func (c *Controller) handleObject(obj interface{}) {
 			runtime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
 			return
 		}
-		glog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
+		c.logger.Infof("Recovered deleted object '%s' from tombstone", object.GetName())
 	}
-	glog.Infof("Processing object: %s", object.GetName())
+	c.logger.Infof("Processing object: %s", object.GetName())
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		if ownerRef.Kind == "DatabaseServer" {
 			s, err := c.serversLister.DatabaseServers(object.GetNamespace()).Get(ownerRef.Name)
 			if err != nil {
-				glog.V(4).Infof("ignoring orphaned object '%s' of databaseserver '%s'", object.GetSelfLink(), ownerRef.Name)
+				c.logger.Debugf("ignoring orphaned object '%s' of databaseserver '%s'", object.GetSelfLink(), ownerRef.Name)
 				return
 			}
 
@@ -371,7 +370,7 @@ func (c *Controller) handleObject(obj interface{}) {
 		if ownerRef.Kind == "Database" {
 			d, err := c.dbsLister.Databases(object.GetNamespace()).Get(ownerRef.Name)
 			if err != nil {
-				glog.V(4).Infof("ignoring orphaned object '%s' of database '%s'", object.GetSelfLink(), ownerRef.Name)
+				c.logger.Debugf("ignoring orphaned object '%s' of database '%s'", object.GetSelfLink(), ownerRef.Name)
 				return
 			}
 

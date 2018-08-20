@@ -7,12 +7,10 @@ import (
 
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database"
-	"github.com/golang/glog"
 	atlas "github.com/infobloxopen/atlas-db/pkg/apis/db/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -27,20 +25,20 @@ func (c *Controller) enqueueDatabaseSchema(obj interface{}) {
 	var object metav1.Object
 	var ok bool
 	if object, ok = obj.(metav1.Object); !ok {
-		glog.Info("not enqueue schema object")
+		c.logger.Debug("not enqueue schema object")
 		return
 	}
-	glog.Infof("enqueue schema object: %s", object.GetName())
+	c.logger.Infof("enqueue schema object: %s", object.GetName())
 	c.enqueue(obj, c.schemaQueue)
 }
 
 func (c *Controller) syncSchema(key string) error {
-	glog.Infof("Processing schema : %v", key)
+	c.logger.Infof("Processing schema : %v", key)
 
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		c.logger.Errorf("invalid resource key: %s", key)
 		return err
 	}
 
@@ -48,12 +46,12 @@ func (c *Controller) syncSchema(key string) error {
 	schema, err := c.schemasLister.DatabaseSchemas(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			runtime.HandleError(fmt.Errorf("schema '%s' in work queue no longer exists", key))
+			c.logger.Warningf("schema '%s' in work queue no longer exists", key)
 			return nil
 		}
 		return err
 	}
-	glog.V(4).Infof("Schema Spec: %v", schema.Spec)
+	c.logger.Debugf("Schema Spec: %v", schema.Spec)
 
 	// If dsn/dsnFrom is passed in the schema spec consider as override and don't go through database spec
 	dsn := schema.Spec.Dsn
@@ -65,23 +63,21 @@ func (c *Controller) syncSchema(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf(MessageDSNGetWaiting, key, secretName)
-					glog.Info(msg)
+					c.logger.Debug(msg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf(MessageDSNGetFailure, key, secretName, err)
-				glog.Error(schemaStatusMsg)
+				c.logger.Error(schemaStatusMsg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
 				return nil
 			}
 		} else { // Get the dsn from database created secret
 			db, err := c.dbsLister.Databases(namespace).Get(dbName)
 			if err != nil {
 				schemaStatusMsg = fmt.Sprintf("failed to fetch database info `%s`: %s", dbName, err)
-				glog.Error(schemaStatusMsg)
+				c.logger.Error(schemaStatusMsg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-				runtime.HandleError(fmt.Errorf(schemaStatusMsg))
 				return err
 			}
 
@@ -89,14 +85,13 @@ func (c *Controller) syncSchema(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf(MessageDSNGetWaiting, key, dbName)
-					glog.Info(msg)
+					c.logger.Debug(msg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf(MessageDSNGetFailure, key, dbName, err)
-				glog.Error(msg)
+				c.logger.Warningf(msg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
 				return nil
 			}
 		}
@@ -111,23 +106,20 @@ func (c *Controller) syncSchema(key string) error {
 			if err != nil {
 				if errors.IsNotFound(err) {
 					msg := fmt.Sprintf("waiting to get sourceURL for schema `%s` from secret `%s`", key, secretName)
-					glog.Info(schemaStatusMsg)
+					c.logger.Debug(schemaStatusMsg)
 					c.updateDatabaseSchemaStatus(key, schema, StatePending, msg)
 					return err
 				}
 				msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s` from secret `%s`", key, secretName)
-				glog.Error(msg)
+				c.logger.Warningf(msg)
 				c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-				runtime.HandleError(fmt.Errorf(msg))
 				return nil
 			}
 
 		} else {
 			msg := fmt.Sprintf("failed to get valid sourceURL for schema `%s`", key)
-			glog.Error(msg)
+			c.logger.Error(msg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, msg)
-			err = fmt.Errorf(msg)
-			runtime.HandleError(err)
 			return err
 		}
 	}
@@ -140,10 +132,8 @@ func (c *Controller) syncSchema(key string) error {
 		dbDriver, err = database.Open(dsn)
 		if err != nil {
 			schemaStatusMsg = fmt.Sprintf("failed to open dbconnection: %s", err)
-			glog.Error(schemaStatusMsg)
+			c.logger.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-			err = fmt.Errorf(schemaStatusMsg)
-			runtime.HandleError(err)
 			return err
 		}
 		dbDriverMap[dbKey] = dbDriver
@@ -152,10 +142,8 @@ func (c *Controller) syncSchema(key string) error {
 	mgrt, err := migrate.NewWithDatabaseInstance(sourceURL, dbName, dbDriver)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("failed to initialize migrate engine: %s", err)
-		glog.Error(schemaStatusMsg)
+		c.logger.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-		err = fmt.Errorf(schemaStatusMsg)
-		runtime.HandleError(err)
 		return err
 	}
 
@@ -165,38 +153,32 @@ func (c *Controller) syncSchema(key string) error {
 		if strings.Contains(errString, badConn) || strings.Contains(errString, connClosed) {
 			delete(dbDriverMap, dbKey)
 			schemaStatusMsg = fmt.Sprintf("database connection errorred: %s", err)
-			glog.Error(schemaStatusMsg)
+			c.logger.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-			err = fmt.Errorf(schemaStatusMsg)
-			runtime.HandleError(err)
 			return err
 		} else if err == migrate.ErrNilVersion {
 			schemaStatusMsg = fmt.Sprintf("database `%s` has no migration applied", dbName)
-			glog.Infof(schemaStatusMsg)
+			c.logger.Infof(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StatePending, schemaStatusMsg)
 		} else {
 			schemaStatusMsg = fmt.Sprintf("cannot get current database version: %s", err)
-			glog.Error(schemaStatusMsg)
+			c.logger.Error(schemaStatusMsg)
 			c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-			err = fmt.Errorf(schemaStatusMsg)
-			runtime.HandleError(err)
 			return err
 		}
 	}
 	if dirt {
 		// TODO we might want to notficate someone about this
 		schemaStatusMsg = fmt.Sprintf("database `%s` is in dirty state (current version is %d)", dbName, ver)
-		glog.Error(schemaStatusMsg)
+		c.logger.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-		err = fmt.Errorf(schemaStatusMsg)
-		runtime.HandleError(err)
 		return err
 	}
 
 	toVersion := uint(schema.Spec.Version)
 	if ver == toVersion {
 		schemaStatusMsg = fmt.Sprintf("Databaseschema `%s` is in requested version %d", key, toVersion)
-		glog.Infof(schemaStatusMsg)
+		c.logger.Infof(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateSuccess, fmt.Sprintf(MessageSchemaSynced, key))
 		return nil
 	}
@@ -204,10 +186,8 @@ func (c *Controller) syncSchema(key string) error {
 	err = mgrt.Migrate(toVersion)
 	if err != nil {
 		schemaStatusMsg = fmt.Sprintf("cannot migrate the db %s : %s", dbName, err)
-		glog.Error(schemaStatusMsg)
+		c.logger.Error(schemaStatusMsg)
 		c.updateDatabaseSchemaStatus(key, schema, StateError, schemaStatusMsg)
-		err = fmt.Errorf(schemaStatusMsg)
-		runtime.HandleError(err)
 		return err
 	}
 	msg := fmt.Sprintf("Migration successful from version %d to %d", ver, toVersion)
@@ -231,7 +211,7 @@ func (c *Controller) updateDatabaseSchemaStatus(key string, schema *atlas.Databa
 
 	_, err := c.atlasclientset.AtlasdbV1alpha1().DatabaseSchemas(schema.Namespace).Update(schemaCopy)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("error updating status to '%s' for database schema '%s': %s", state, key, err))
+		c.logger.Warningf("error updating status to '%s' for database schema '%s': %s", state, key, err)
 		return schema, err
 	}
 	// we have to pull it back out or our next update will fail. hopefully this is fixed with updateStatus

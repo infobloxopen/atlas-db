@@ -57,6 +57,7 @@ the controller deployment as follow:
 
   - resync: Resync duration
   - logtostderr: Logs are written to standard error instead of files.
+  - log: log level
   - v: Enable debug mode
   - LabelSelector: A selector to restrict the list of returned objects by their labels.
 *If user do not specify this option, atlas-db-controller will default to everything.*
@@ -68,6 +69,7 @@ args:
   - "-resync=3m"
   - "-logtostderr"
   - "-v=4"
+  - "-log=error"
   - "-l=monitor=atlas-deployment-1"
 ```
 

@@ -61,6 +61,7 @@ const (
 	StatePending  = "Pending"
 	StateSuccess  = "Success"
 	StateUpdating = "Updating"
+	StateRunning  = "Running"
 
 	MessageDSNGetFailure = "failed to get DSN for %q from secret %q : %q"
 	MessageDSNGetWaiting = "waiting to get DSN for %q from secret %q"

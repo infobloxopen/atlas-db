@@ -19,11 +19,10 @@ type Database struct {
 
 // DatabaseSpec is the spec for a Database resource
 type DatabaseSpec struct {
-	Users      []DatabaseUser `json:"users"`
-	Dsn        string         `json:"dsn"`
-	DsnFrom    *ValueSource   `json:"dsnFrom"`
-	Server     string         `json:"server"`
-	ServerType string         `json:"serverType"`
+	Users   []DatabaseUser `json:"users"`
+	Dsn     string         `json:"dsn"`
+	DsnFrom *ValueSource   `json:"dsnFrom"`
+	Server  string         `json:"server"`
 }
 
 // DatabaseUser represents a user to provision

@@ -56,7 +56,6 @@ func (c *Controller) syncServer(key string) error {
 		if err != nil {
 			msg := fmt.Sprintf("error syncing server pod '%s': %s", key, err)
 			c.logger.Error(msg)
-			c.updateDatabaseServerStatus(key, s, StateError, msg)
 			return err
 		}
 	}
@@ -267,6 +266,13 @@ func (c *Controller) syncPodServer(p plugin.PodPlugin, key string, s *atlas.Data
 	if !metav1.IsControlledBy(pod, s) {
 		msg := fmt.Sprintf(MessagePodExists, pod.Name)
 		c.recorder.Event(s, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
+	if pod.Status.Phase != StateRunning {
+		msg := fmt.Sprintf("waiting for pod '%s' to be up", key)
+		c.logger.Debug(msg)
+		c.updateDatabaseServerStatus(key, s, StatePending, msg)
 		return fmt.Errorf(msg)
 	}
 

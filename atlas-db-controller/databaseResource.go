@@ -67,19 +67,14 @@ func (c *Controller) syncDatabase(key string) error {
 		}
 	}
 
-	serverType := db.Spec.ServerType
-	if serverType == "" && s == nil {
+	if s == nil {
 		msg := fmt.Sprintf("database '%s' has no serverType or server set", key)
 		c.logger.Error(msg)
 		c.updateDatabaseStatus(key, db, StateError, msg)
 		return nil
 	}
 
-	if serverType != "" {
-		p = server.NewDBPlugin(serverType)
-	} else {
-		p = server.ActivePlugin(s).DatabasePlugin()
-	}
+	p = server.ActivePlugin(s).DatabasePlugin()
 
 	if p == nil {
 		msg := fmt.Sprintf("database '%s' does not have a valid database plugin", key)
